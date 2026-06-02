@@ -51,20 +51,24 @@ if playerGui:FindFirstChild("BoogaHub") then playerGui.BoogaHub:Destroy() end
 
 local slotKeys = {Enum.KeyCode.One,Enum.KeyCode.Two,Enum.KeyCode.Three,
                   Enum.KeyCode.Four,Enum.KeyCode.Five,Enum.KeyCode.Six}
-local RS          = game:GetService("ReplicatedStorage")
-local PickupItem  = RS:WaitForChild("Events"):WaitForChild("PickupItem")
-local itemsFolder = workspace:WaitForChild("Items")
-local crittersFdr = workspace:WaitForChild("Critters")
+local RS               = game:GetService("ReplicatedStorage")
+local PickupItem       = RS:WaitForChild("Events"):WaitForChild("PickupItem")
+local DamageResource   = RS:WaitForChild("Events"):WaitForChild("DamageResource") -- NEW REMOTE
+local itemsFolder      = workspace:WaitForChild("Items")
+local crittersFdr      = workspace:WaitForChild("Critters")
 
 -- ── INPUT HELPERS ──────────────────────────────────────────
 local function pressKey(kc)
     VirtualInputManager:SendKeyEvent(true,  kc, false, game) task.wait(0.04)
     VirtualInputManager:SendKeyEvent(false, kc, false, game)
 end
-local function leftClick()
-    local m = player:GetMouse()
-    VirtualInputManager:SendMouseButtonEvent(m.X,m.Y,0,true, game,0) task.wait(0.006)
-    VirtualInputManager:SendMouseButtonEvent(m.X,m.Y,0,false,game,0)
+
+-- Replaced visual click with RemoteFunction attack
+local function attackTarget(target)
+    if not target then return end
+    pcall(function()
+        DamageResource:InvokeServer(target)
+    end)
 end
 
 -- ── ANTI-TAB ───────────────────────────────────────────────
@@ -290,14 +294,17 @@ local function nearestStrangeBarb()
     return best
 end
 
+-- UPDATED: Uses DamageResource remote instead of visual clicks
 local function startAutoAttack()
     if atkThread then return end
     atkThread = task.spawn(function()
         while states.autoAttack do
-            if nearestBarb() then
-                pressKey(slotKeys[1]) task.wait(0.08)
+            local target = nearestBarb()
+            if target then
                 while states.autoAttack and nearestBarb() do
-                    if not isMouseOverGUI() then leftClick() end
+                    if not isMouseOverGUI() then
+                        attackTarget(target)
+                    end
                     task.wait(1/CLICK_CPS)
                 end
             else task.wait(0.2) end
@@ -308,14 +315,17 @@ local function stopAutoAttack()
     if atkThread then task.cancel(atkThread) end atkThread=nil
 end
 
+-- UPDATED: Uses DamageResource remote instead of visual clicks
 local function startStrangeTribe()
     if strangeAtkThread then return end
     strangeAtkThread = task.spawn(function()
         while states.strangeTribe do
-            if nearestStrangeBarb() then
-                pressKey(slotKeys[1]) task.wait(0.08)
+            local target = nearestStrangeBarb()
+            if target then
                 while states.strangeTribe and nearestStrangeBarb() do
-                    if not isMouseOverGUI() then leftClick() end
+                    if not isMouseOverGUI() then
+                        attackTarget(target)
+                    end
                     task.wait(1/CLICK_CPS)
                 end
             else task.wait(0.2) end
@@ -328,7 +338,7 @@ local function stopStrangeTribe()
     strangeAtkThread = nil
 end
 
--- ══════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════
 --  GUI
 -- ═══════════════════════════════════════════════════════════
 local C = {
@@ -445,7 +455,7 @@ local allPages    = {pageFarm,pagePickup,pageSettings}
 local tabDefs = {
     {icon="⚔",  label="FARM"},
     {icon="🎒", label="PICKUPS"},
-    {icon="",  label="SETTINGS"},
+    {icon="⚙",  label="SETTINGS"},
 }
 local tabBtns = {}
 local activeTab = 1
@@ -648,7 +658,7 @@ local calibStat=makeInfo(pageFarm,"Status: NOT calibrated  —  press J",18)
 calibStat.TextColor3=C.red
 
 makeToggle(pageFarm,"Auto Cook Fish","autoCookFish",function(on)
-    if on then startAutoCook() statusLbl.Text=" Cooking"
+    if on then startAutoCook() statusLbl.Text="🟢 Cooking"
         TweenService:Create(statusPill,TweenInfo.new(0.2),{BackgroundColor3=C.green}):Play()
     else
         stopAutoCook() statusLbl.Text=""
