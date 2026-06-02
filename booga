@@ -9,28 +9,32 @@ local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 -- ── CONSTANTS ──────────────────────────────────────────────
-local GUI_KEY          = Enum.KeyCode.M
-local CLICK_CPS        = 22
-local ATTACK_RANGE     = 18
-local OVEN_RADIUS      = 25
-local FISH_PER_OVEN    = 9
+local GUI_KEY       = Enum.KeyCode.M
+local CLICK_CPS     = 22
+local ATTACK_RANGE  = 18
+local OVEN_RADIUS   = 25
+local FISH_PER_OVEN = 9
+local PLANT_RADIUS  = 30   -- studs to scan for plant boxes
+local PLANT_INPUT   = 216  -- StructureInput action id
 
 local pickupRadii = {
-    pickupKeys=35, pickupRaw=35, pickupRawFish=35, pickupCookedFish=35,
-    pickupGold=35, pickupIron=35, pickupEssence=35, pickupVoidEssence=35,
-    pickupChiefEssence=35, pickupPinkDiamond=35, pickupCrystal=35,
-    pickupMoltenBow=35, pickupMoltenShield=35, pickupStrangeGreatsword=35,
+    pickupKeys=35, pickupRaw=20, pickupRawFish=35, pickupCookedFish=35,
+    pickupGold=35, pickupIron=20, pickupEssence=35, pickupVoidEssence=20,
+    pickupChiefEssence=35, pickupPinkDiamond=20, pickupCrystal=35,
+    pickupMoltenBow=35, pickupMoltenShield=35, pickupStrangeGreatsword=20,
     pickupStrangeBag=35, pickupAncientHammer=35,
     pickupSpiritKey=35, pickupOldKey=35, pickupStrangeKey=35,
     pickupGodHalo=35, pickupGodChestplate=35, pickupGodLeggings=35,
     pickupGodPickaxe=35, pickupGodAxe=35, pickupGodRock=35,
-    pickupGodRod=35, pickupGodBag=35, pickupGodSailboat=35, pickupGodHut=35, 
-    pickupGem=35, pickupRawMorsel=35, pickupWood=35, pickupLeaves=35, 
-    pickupGoldCoins=35, pickupSilverCoins=35, pickupBananas=35, pickupStardust=35, pickupCookedMeat=35,
+    pickupGodRod=35, pickupGodBag=35, pickupGodSailboat=35, pickupGodHut=35,
+    pickupGem=35, pickupRawMorsel=35, pickupWood=20, pickupLeaves=20,
+    pickupGoldCoins=35, pickupSilverCoins=35, pickupBananas=20,
+    pickupStardust=35, pickupCookedMeat=20,
 }
 
 local states = {
-    autoAttack=false, autoCookFish=false,
+    autoAttack=false, autoCookFish=false, autoPlant=false, autoBreak=false,
+    spyActive=false,
     pickupKeys=false, pickupRaw=false, pickupRawFish=false,
     pickupCookedFish=false, pickupGold=false, pickupIron=false,
     pickupEssence=false, pickupVoidEssence=false, pickupChiefEssence=false,
@@ -42,19 +46,22 @@ local states = {
     pickupGodHalo=false, pickupGodChestplate=false, pickupGodLeggings=false,
     pickupGodPickaxe=false, pickupGodAxe=false, pickupGodRock=false,
     pickupGodRod=false, pickupGodBag=false, pickupGodSailboat=false, pickupGodHut=false,
-    antiTab=false, antiLag=false, 
-    pickupGem=false, pickupWood=false, pickupSilverCoins=false, pickupGoldCoins=false, 
-    pickupRawMorsel=false, pickupLeaves=false, pickupBananas=false, pickupStardust=false, pickupCookedMeat=false,
+    antiTab=false, antiLag=false,
+    pickupGem=false, pickupWood=false, pickupSilverCoins=false, pickupGoldCoins=false,
+    pickupRawMorsel=false, pickupLeaves=false, pickupBananas=false,
+    pickupStardust=false, pickupCookedMeat=false,
 }
 
 if playerGui:FindFirstChild("BoogaHub") then playerGui.BoogaHub:Destroy() end
 
 local slotKeys = {Enum.KeyCode.One,Enum.KeyCode.Two,Enum.KeyCode.Three,
                   Enum.KeyCode.Four,Enum.KeyCode.Five,Enum.KeyCode.Six}
-local RS          = game:GetService("ReplicatedStorage")
-local PickupItem  = RS:WaitForChild("Events"):WaitForChild("PickupItem")
-local itemsFolder = workspace:WaitForChild("Items")
-local crittersFdr = workspace:WaitForChild("Critters")
+local RS           = game:GetService("ReplicatedStorage")
+local PickupItem   = RS:WaitForChild("Events"):WaitForChild("PickupItem")
+local StructInput  = RS:WaitForChild("Events"):WaitForChild("StructureInput")
+local itemsFolder  = workspace:WaitForChild("Items")
+local crittersFdr  = workspace:WaitForChild("Critters")
+local buildsFolder = workspace:WaitForChild("Resources"):WaitForChild("Builds")
 
 -- ── INPUT HELPERS ──────────────────────────────────────────
 local function pressKey(kc)
@@ -65,6 +72,73 @@ local function leftClick()
     local m = player:GetMouse()
     VirtualInputManager:SendMouseButtonEvent(m.X,m.Y,0,true, game,0) task.wait(0.006)
     VirtualInputManager:SendMouseButtonEvent(m.X,m.Y,0,false,game,0)
+end
+
+-- ── NOTIFICATIONS ──────────────────────────────────────────
+local function showNotification(text)
+    local targetGui = playerGui:FindFirstChild("BoogaHub") or playerGui
+    local notif = Instance.new("Frame")
+    notif.Size = UDim2.new(0, 320, 0, 40)
+    notif.Position = UDim2.new(0.5, -160, 0, 70)
+    notif.BackgroundColor3 = C.row
+    notif.BorderSizePixel = 0
+    notif.Parent = targetGui
+    notif.ZIndex = 1000
+    Instance.new("UICorner", notif).CornerRadius = UDim.new(0, 8)
+    local stroke = Instance.new("UIStroke", notif)
+    stroke.Color = C.accent
+    stroke.Thickness = 1
+
+    local lbl = Instance.new("TextLabel", notif)
+    lbl.Size = UDim2.new(1, -20, 1, 0)
+    lbl.Position = UDim2.new(0, 10, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = text
+    lbl.TextColor3 = C.white
+    lbl.TextSize = 11
+    lbl.Font = Enum.Font.GothamMedium
+    lbl.TextXAlignment = Enum.TextXAlignment.Center
+    lbl.ZIndex = 1001
+    
+    task.spawn(function()
+        task.wait(3)
+        for i = 1, 10 do
+            if not notif.Parent then break end
+            notif.BackgroundTransparency = i / 10
+            lbl.TextTransparency = i / 10
+            stroke.Transparency = i / 10
+            task.wait(0.03)
+        end
+        if notif.Parent then notif:Destroy() end
+    end)
+end
+
+-- ── REMOTE SPY FOR PLANTING ──────────────────────────────
+local capturedRemote = nil
+local capturedArgs = nil
+
+local oldNamecall
+local success, err = pcall(function()
+    oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+        if states.spyActive then
+            local method = getnamecallmethod()
+            if method == "InvokeServer" or method == "FireServer" then
+                local name = self.Name:lower()
+                if name:find("plant") or name:find("structure") or name:find("input") or name:find("build") or name:find("place") or name:find("farm") then
+                    capturedRemote = self
+                    capturedArgs = {...}
+                    states.spyActive = false
+                    showNotification("✅ Planting Remote Captured: " .. self.Name)
+                    print("[BoogaHub] Captured Remote:", self.Name, "Args:", table.concat(capturedArgs, ", "))
+                end
+            end
+        end
+        return oldNamecall(self, ...)
+    end)
+end)
+
+if not success then
+    print("[BoogaHub] Warning: hookmetamethod not supported by your executor. Remote spy will not work.")
 end
 
 -- ── ANTI-TAB ───────────────────────────────────────────────
@@ -178,61 +252,41 @@ end
 local function runAutoCook()
     isCooking = true
     local filled = {}
-
     while states.autoCookFish do
         local ch = player.Character
         if not ch or not ch:FindFirstChild("HumanoidRootPart") then task.wait(0.3) continue end
-
         local ovens = getNearbyOvens()
-        if #ovens == 0 then
-            filled = {}
-            task.wait(0.3)
-            continue
-        end
-
+        if #ovens == 0 then filled={} task.wait(0.3) continue end
         local queue = {}
-        for _, o in ipairs(ovens) do
-            if not filled[o.model] then
-                table.insert(queue, o)
-            end
+        for _,o in ipairs(ovens) do
+            if not filled[o.model] then table.insert(queue,o) end
         end
-
-        if #queue == 0 then
-            filled = {}
-            continue
-        end
-
+        if #queue == 0 then filled={} continue end
         local cam = workspace.CurrentCamera
-
-        for _, od in ipairs(queue) do
+        for _,od in ipairs(queue) do
             if not states.autoCookFish then break end
-
-            local sp, vis = cam:WorldToScreenPoint(od.part.Position)
+            local sp,vis = cam:WorldToScreenPoint(od.part.Position)
             if not vis then continue end
-            local ox, oy = math.floor(sp.X), math.floor(sp.Y)
-
-            VirtualInputManager:SendMouseMoveEvent(ox, oy, game)
-            task.wait(0.06)
-            VirtualInputManager:SendMouseButtonEvent(ox, oy, 0, true,  game, 0)
-            task.wait(0.04)
-            VirtualInputManager:SendMouseButtonEvent(ox, oy, 0, false, game, 0)
-
+            local ox,oy = math.floor(sp.X),math.floor(sp.Y)
+            VirtualInputManager:SendMouseMoveEvent(ox,oy,game) task.wait(0.06)
+            VirtualInputManager:SendMouseButtonEvent(ox,oy,0,true, game,0) task.wait(0.04)
+            VirtualInputManager:SendMouseButtonEvent(ox,oy,0,false,game,0)
             if waitOven(1.5) then
                 task.wait(0.04)
-                local fx, fy = getFishPos()
-                clickFishNTimes(fx, fy)
-                filled[od.model] = true
+                local fx,fy = getFishPos()
+                clickFishNTimes(fx,fy)
+                filled[od.model]=true
                 task.wait(0.03)
                 pressKey(Enum.KeyCode.E)
                 task.wait(0.06)
             else
-                filled[od.model] = true
+                filled[od.model]=true
                 pressKey(Enum.KeyCode.E)
                 task.wait(0.05)
             end
         end
     end
-    isCooking = false
+    isCooking=false
 end
 
 local function startAutoCook()
@@ -243,6 +297,148 @@ local function stopAutoCook()
     states.autoCookFish=false
     if cookThread then task.cancel(cookThread) end
     cookThread=nil isCooking=false
+end
+
+-- ── AUTO PLANT & HARVEST HELPERS ───────────────────────────
+local plantThread, isPlanting = nil, false
+local breakThread, isBreaking = nil, false
+local plantRadius = PLANT_RADIUS
+local DamageResource = RS:WaitForChild("Events"):WaitForChild("DamageResource")
+local selectedCrop = "Banana"
+
+local function getNearbyPlantBoxes()
+    local ch = player.Character
+    if not ch then return {} end
+    local root = ch:FindFirstChild("HumanoidRootPart")
+    if not root then return {} end
+    local out = {}
+    for _, obj in ipairs(buildsFolder:GetChildren()) do
+        if obj.Name == "Plant Box" and obj:IsA("Model") then
+            local part = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+            if part then
+                local d = (root.Position - part.Position).Magnitude
+                if d <= plantRadius then
+                    table.insert(out, {obj = obj, dist = d})
+                end
+            end
+        end
+    end
+    table.sort(out, function(a, b) return a.dist < b.dist end)
+    return out
+end
+
+local function equipCrop()
+    local backpack = player:FindFirstChild("Backpack")
+    local character = player.Character
+    if not backpack or not character then return false end
+    
+    local currentTool = character:FindFirstChildOfClass("Tool")
+    if currentTool and currentTool.Name:lower():find(selectedCrop:lower()) then
+        return true
+    end
+    
+    local tool = nil
+    for _, child in ipairs(backpack:GetChildren()) do
+        if child:IsA("Tool") and child.Name:lower():find(selectedCrop:lower()) then
+            tool = child
+            break
+        end
+    end
+    
+    if tool then
+        player.Character.Humanoid:EquipTool(tool)
+        task.wait(0.15)
+        return true
+    end
+    return false
+end
+
+local function runAutoPlant()
+    isPlanting = true
+    while states.autoPlant do
+        local ch = player.Character
+        if not ch or not ch:FindFirstChild("HumanoidRootPart") then
+            task.wait(0.3) continue
+        end
+        
+        equipCrop()
+        
+        local boxes = getNearbyPlantBoxes()
+        if #boxes == 0 then task.wait(0.3) continue end
+
+        for _, b in ipairs(boxes) do
+            if not states.autoPlant then break end
+            
+            if capturedRemote and capturedArgs then
+                pcall(function()
+                    local args = {}
+                    local replaced = false
+                    for i, v in ipairs(capturedArgs) do
+                        if typeof(v) == "Instance" and not replaced then
+                            table.insert(args, b.obj)
+                            replaced = true
+                        else
+                            table.insert(args, v)
+                        end
+                    end
+                    
+                    if capturedRemote:IsA("RemoteFunction") then
+                        capturedRemote:InvokeServer(unpack(args))
+                    elseif capturedRemote:IsA("RemoteEvent") then
+                        capturedRemote:FireServer(unpack(args))
+                    end
+                end)
+            else
+                pcall(function()
+                    StructInput:InvokeServer(b.obj, 54)
+                end)
+            end
+            task.wait(0.05)
+        end
+        task.wait(0.1)
+    end
+    isPlanting = false
+end
+
+local function startAutoPlant()
+    if isPlanting then return end
+    plantThread = task.spawn(runAutoPlant)
+end
+local function stopAutoPlant()
+    states.autoPlant = false
+    if plantThread then task.cancel(plantThread) end
+    plantThread = nil isPlanting = false
+end
+
+local function runAutoBreak()
+    isBreaking = true
+    while states.autoBreak do
+        local ch = player.Character
+        if not ch or not ch:FindFirstChild("HumanoidRootPart") then
+            task.wait(0.3) continue
+        end
+        local boxes = getNearbyPlantBoxes()
+        if #boxes == 0 then task.wait(0.3) continue end
+
+        for _, b in ipairs(boxes) do
+            if not states.autoBreak then break end
+            pcall(function()
+                DamageResource:FireServer()
+            end)
+            task.wait(0.01)
+        end
+    end
+    isBreaking = false
+end
+
+local function startAutoBreak()
+    if isBreaking then return end
+    breakThread = task.spawn(runAutoBreak)
+end
+local function stopAutoBreak()
+    states.autoBreak = false
+    if breakThread then task.cancel(breakThread) end
+    breakThread = nil isBreaking = false
 end
 
 -- ── AUTO ATTACK ────────────────────────────────────────────
@@ -288,13 +484,11 @@ local C = {
     win     = Color3.fromRGB(15, 15, 20),
     panel   = Color3.fromRGB(20, 20, 28),
     row     = Color3.fromRGB(26, 26, 36),
-    rowHov  = Color3.fromRGB(32, 32, 44),
     input   = Color3.fromRGB(12, 12, 18),
     tabBar  = Color3.fromRGB(11, 11, 16),
     tabSel  = Color3.fromRGB(99, 102, 241),
     tabTxt  = Color3.fromRGB(120, 120, 160),
     accent  = Color3.fromRGB(99, 102, 241),
-    accentB = Color3.fromRGB(139, 92, 246),
     green   = Color3.fromRGB(52, 211, 153),
     red     = Color3.fromRGB(248, 113, 113),
     amber   = Color3.fromRGB(251, 191, 36),
@@ -307,10 +501,10 @@ local C = {
 }
 
 local sg = Instance.new("ScreenGui")
-sg.Name = "BoogaHub" sg.ResetOnSpawn=false
-sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling sg.Parent=playerGui
+sg.Name="BoogaHub" sg.ResetOnSpawn=false
+sg.ZIndexBehavior=Enum.ZIndexBehavior.Sibling sg.Parent=playerGui
 
-local WIN_W, WIN_H = 310, 620
+local WIN_W,WIN_H = 310,640
 local win = Instance.new("Frame")
 win.Name="Win" win.Size=UDim2.new(0,WIN_W,0,WIN_H)
 win.Position=UDim2.new(0,30,0,30)
@@ -319,27 +513,26 @@ win.Active=true win.Draggable=true win.Visible=false win.Parent=sg
 Instance.new("UICorner",win).CornerRadius=UDim.new(0,14)
 local winStroke=Instance.new("UIStroke",win)
 winStroke.Color=C.accent winStroke.Thickness=1.2
-guiFrame = win
+guiFrame=win
 
-local HDR_H = 56
-local hdr = Instance.new("Frame",win)
-hdr.Size=UDim2.new(1,0,0,HDR_H) hdr.BackgroundColor3=C.tabBar
-hdr.BorderSizePixel=0
+-- Header
+local HDR_H=56
+local hdr=Instance.new("Frame",win)
+hdr.Size=UDim2.new(1,0,0,HDR_H) hdr.BackgroundColor3=C.tabBar hdr.BorderSizePixel=0
 Instance.new("UICorner",hdr).CornerRadius=UDim.new(0,14)
 
-local stripe = Instance.new("Frame",hdr)
+local stripe=Instance.new("Frame",hdr)
 stripe.Size=UDim2.new(0,4,1,-16) stripe.Position=UDim2.new(0,0,0,8)
 stripe.BackgroundColor3=C.accent stripe.BorderSizePixel=0
 Instance.new("UICorner",stripe).CornerRadius=UDim.new(0,4)
 
-local iconCircle = Instance.new("Frame",hdr)
+local iconCircle=Instance.new("Frame",hdr)
 iconCircle.Size=UDim2.new(0,34,0,34) iconCircle.Position=UDim2.new(0,14,0.5,-17)
 iconCircle.BackgroundColor3=C.accent iconCircle.BorderSizePixel=0
 Instance.new("UICorner",iconCircle).CornerRadius=UDim.new(1,0)
 local iconLbl=Instance.new("TextLabel",iconCircle)
 iconLbl.Size=UDim2.new(1,0,1,0) iconLbl.BackgroundTransparency=1
-iconLbl.Text="⚡" iconLbl.TextSize=18 iconLbl.Font=Enum.Font.GothamBold
-iconLbl.TextColor3=C.white
+iconLbl.Text="⚡" iconLbl.TextSize=18 iconLbl.Font=Enum.Font.GothamBold iconLbl.TextColor3=C.white
 
 local titleLbl=Instance.new("TextLabel",hdr)
 titleLbl.Size=UDim2.new(0,140,0,20) titleLbl.Position=UDim2.new(0,56,0,10)
@@ -362,7 +555,8 @@ statusLbl.Size=UDim2.new(1,0,1,0) statusLbl.BackgroundTransparency=1
 statusLbl.Text="" statusLbl.TextColor3=C.white
 statusLbl.TextSize=8 statusLbl.Font=Enum.Font.GothamBold
 
-local TAB_H = 38
+-- Tab bar
+local TAB_H=38
 local tabBar=Instance.new("Frame",win)
 tabBar.Size=UDim2.new(1,0,0,TAB_H) tabBar.Position=UDim2.new(0,0,0,HDR_H)
 tabBar.BackgroundColor3=C.tabBar tabBar.BorderSizePixel=0
@@ -373,8 +567,8 @@ local div=Instance.new("Frame",win)
 div.Size=UDim2.new(1,0,0,1) div.Position=UDim2.new(0,0,0,HDR_H+TAB_H)
 div.BackgroundColor3=C.border div.BorderSizePixel=0
 
-local CONTENT_Y = HDR_H+TAB_H+1
-local CONTENT_H = WIN_H-CONTENT_Y
+local CONTENT_Y=HDR_H+TAB_H+1
+local CONTENT_H=WIN_H-CONTENT_Y
 
 local function makePage()
     local sf=Instance.new("ScrollingFrame",win)
@@ -398,28 +592,25 @@ local allPages    = {pageFarm,pagePickup,pageSettings}
 local tabDefs = {
     {icon="⚔",  label="FARM"},
     {icon="🎒", label="PICKUPS"},
-    {icon="",  label="SETTINGS"},
+    {icon="⚙",  label="SETTINGS"},
 }
-local tabBtns = {}
-local activeTab = 1
+local tabBtns={} local activeTab=1
 
 local function switchTab(i)
     activeTab=i
     for j,pg in ipairs(allPages) do pg.Visible=(j==i) end
     for j,btn in ipairs(tabBtns) do
         local on=(j==i)
-        btn.BackgroundColor3 = on and C.tabSel or C.tabBar
-        btn.TextColor3       = on and C.white  or C.tabTxt
+        btn.BackgroundColor3=on and C.tabSel or C.tabBar
+        btn.TextColor3=on and C.white or C.tabTxt
     end
 end
 
 for i,td in ipairs(tabDefs) do
     local btn=Instance.new("TextButton",tabBar)
-    btn.Size=UDim2.new(1/3,0,1,0) btn.BackgroundColor3=C.tabBar
-    btn.BorderSizePixel=0
+    btn.Size=UDim2.new(1/3,0,1,0) btn.BackgroundColor3=C.tabBar btn.BorderSizePixel=0
     btn.Text=td.icon.."  "..td.label
-    btn.TextColor3=C.tabTxt btn.TextSize=10 btn.Font=Enum.Font.GothamBold
-    btn.LayoutOrder=i
+    btn.TextColor3=C.tabTxt btn.TextSize=10 btn.Font=Enum.Font.GothamBold btn.LayoutOrder=i
     btn.MouseButton1Click:Connect(function() switchTab(i) end)
     tabBtns[i]=btn
 end
@@ -430,28 +621,25 @@ end
 local lo=0
 local function nlo() lo+=1 return lo end
 
-local function makeSection(parent, text)
+local function makeSection(parent,text)
     local wrap=Instance.new("Frame",parent)
-    wrap.Size=UDim2.new(1,0,0,26) wrap.BackgroundTransparency=1
-    wrap.LayoutOrder=nlo()
+    wrap.Size=UDim2.new(1,0,0,26) wrap.BackgroundTransparency=1 wrap.LayoutOrder=nlo()
     local lbl=Instance.new("TextLabel",wrap)
-    lbl.Size=UDim2.new(1,-8,1,0) lbl.Position=UDim2.new(0,4,0,0)
+    lbl.Size=UDim2.new(1,-8,1,0) lbl.Position=UDim2.new(0,10,0,0)
     lbl.BackgroundTransparency=1 lbl.Text=text:upper()
     lbl.TextColor3=C.accent lbl.TextSize=9
     lbl.Font=Enum.Font.GothamBold lbl.TextXAlignment=Enum.TextXAlignment.Left
     local dot=Instance.new("Frame",wrap)
-    dot.Size=UDim2.new(0,3,0,14) dot.Position=UDim2.new(0,0,0.5,-7)
+    dot.Size=UDim2.new(0,3,0,14) dot.Position=UDim2.new(0,4,0.5,-7)
     dot.BackgroundColor3=C.accent dot.BorderSizePixel=0
     Instance.new("UICorner",dot).CornerRadius=UDim.new(1,0)
 end
 
-local function makeToggle(parent, label, stateKey, cb)
+local function makeToggle(parent,label,stateKey,cb)
     local row=Instance.new("Frame",parent)
-    row.Size=UDim2.new(1,0,0,40) row.BackgroundColor3=C.row
-    row.BorderSizePixel=0 row.LayoutOrder=nlo()
+    row.Size=UDim2.new(1,0,0,40) row.BackgroundColor3=C.row row.BorderSizePixel=0 row.LayoutOrder=nlo()
     Instance.new("UICorner",row).CornerRadius=UDim.new(0,8)
-    local stroke=Instance.new("UIStroke",row)
-    stroke.Color=C.border stroke.Thickness=1
+    local stroke=Instance.new("UIStroke",row) stroke.Color=C.border stroke.Thickness=1
 
     local lbl=Instance.new("TextLabel",row)
     lbl.Size=UDim2.new(1,-60,1,0) lbl.Position=UDim2.new(0,14,0,0)
@@ -463,7 +651,6 @@ local function makeToggle(parent, label, stateKey, cb)
     pill.Size=UDim2.new(0,40,0,22) pill.Position=UDim2.new(1,-52,0.5,-11)
     pill.BackgroundColor3=C.pill_of pill.BorderSizePixel=0
     Instance.new("UICorner",pill).CornerRadius=UDim.new(1,0)
-
     local knob=Instance.new("Frame",pill)
     knob.Size=UDim2.new(0,16,0,16) knob.Position=UDim2.new(0,3,0.5,-8)
     knob.BackgroundColor3=C.knob knob.BorderSizePixel=0
@@ -478,7 +665,6 @@ local function makeToggle(parent, label, stateKey, cb)
         TweenService:Create(stroke,TweenInfo.new(0.15),{Color=on and C.accent or C.border}):Play()
         TweenService:Create(lbl,TweenInfo.new(0.15),{TextColor3=on and C.white or C.muted}):Play()
     end
-
     local btn=Instance.new("TextButton",row)
     btn.Size=UDim2.new(1,0,1,0) btn.BackgroundTransparency=1 btn.Text=""
     btn.MouseButton1Click:Connect(function()
@@ -488,19 +674,16 @@ local function makeToggle(parent, label, stateKey, cb)
     end)
 end
 
-local function makeInput(parent, label, default, cb)
+local function makeInput(parent,label,default,cb)
     local row=Instance.new("Frame",parent)
-    row.Size=UDim2.new(1,0,0,40) row.BackgroundColor3=C.row
-    row.BorderSizePixel=0 row.LayoutOrder=nlo()
+    row.Size=UDim2.new(1,0,0,40) row.BackgroundColor3=C.row row.BorderSizePixel=0 row.LayoutOrder=nlo()
     Instance.new("UICorner",row).CornerRadius=UDim.new(0,8)
     Instance.new("UIStroke",row).Color=C.border
-
     local lbl=Instance.new("TextLabel",row)
     lbl.Size=UDim2.new(1,-90,1,0) lbl.Position=UDim2.new(0,14,0,0)
     lbl.BackgroundTransparency=1 lbl.Text=label
     lbl.TextColor3=C.muted lbl.TextSize=10
     lbl.Font=Enum.Font.Gotham lbl.TextXAlignment=Enum.TextXAlignment.Left
-
     local box=Instance.new("TextBox",row)
     box.Size=UDim2.new(0,68,0,26) box.Position=UDim2.new(1,-78,0.5,-13)
     box.BackgroundColor3=C.input box.Text=tostring(default)
@@ -513,8 +696,8 @@ local function makeInput(parent, label, default, cb)
     end)
 end
 
-local function makeInfo(parent, text, h)
-    h = h or 44
+local function makeInfo(parent,text,h)
+    h=h or 44
     local lbl=Instance.new("TextLabel",parent)
     lbl.Size=UDim2.new(1,0,0,h) lbl.BackgroundTransparency=1
     lbl.Text=text lbl.TextColor3=C.amber lbl.TextSize=10
@@ -523,42 +706,192 @@ local function makeInfo(parent, text, h)
     return lbl
 end
 
-local function makePickupRow(parent, label, stateKey, radiusKey)
+local function makeCropSelector(parent, label, defaultCrop, cb)
+    local row = Instance.new("Frame", parent)
+    row.Size = UDim2.new(1, 0, 0, 40)
+    row.BackgroundColor3 = C.row
+    row.BorderSizePixel = 0
+    row.LayoutOrder = nlo()
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+    local stroke = Instance.new("UIStroke", row)
+    stroke.Color = C.border
+    stroke.Thickness = 1
+
+    local lbl = Instance.new("TextLabel", row)
+    lbl.Size = UDim2.new(1, -120, 1, 0)
+    lbl.Position = UDim2.new(0, 14, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = label
+    lbl.TextColor3 = C.white
+    lbl.TextSize = 11
+    lbl.Font = Enum.Font.GothamMedium
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    local btn = Instance.new("TextButton", row)
+    btn.Size = UDim2.new(0, 110, 0, 26)
+    btn.Position = UDim2.new(1, -118, 0.5, -13)
+    btn.BackgroundColor3 = C.input
+    btn.Text = "Crop: " .. defaultCrop
+    btn.TextColor3 = C.white
+    btn.TextSize = 11
+    btn.Font = Enum.Font.GothamMedium
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    local btnStroke = Instance.new("UIStroke", btn)
+    btnStroke.Color = C.border
+    btnStroke.Thickness = 1
+
+    local currentCrop = defaultCrop
+    btn.MouseButton1Click:Connect(function()
+        if currentCrop == "Banana" then
+            currentCrop = "Bloodfruit"
+        else
+            currentCrop = "Banana"
+        end
+        btn.Text = "Crop: " .. currentCrop
+        if cb then cb(currentCrop) end
+    end)
+end
+
+local function makeSpyButton(parent, label)
+    local row = Instance.new("Frame", parent)
+    row.Size = UDim2.new(1, 0, 0, 40)
+    row.BackgroundColor3 = C.row
+    row.BorderSizePixel = 0
+    row.LayoutOrder = nlo()
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+    local stroke = Instance.new("UIStroke", row)
+    stroke.Color = C.border
+    stroke.Thickness = 1
+
+    local lbl = Instance.new("TextLabel", row)
+    lbl.Size = UDim2.new(1, -180, 1, 0)
+    lbl.Position = UDim2.new(0, 14, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = label
+    lbl.TextColor3 = C.white
+    lbl.TextSize = 11
+    lbl.Font = Enum.Font.GothamMedium
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    local statusLbl = Instance.new("TextLabel", row)
+    statusLbl.Size = UDim2.new(0, 90, 1, 0)
+    statusLbl.Position = UDim2.new(1, -180, 0, 0)
+    statusLbl.BackgroundTransparency = 1
+    statusLbl.Text = "Uncaptured"
+    statusLbl.TextColor3 = C.muted
+    statusLbl.TextSize = 10
+    statusLbl.Font = Enum.Font.Gotham
+    statusLbl.TextXAlignment = Enum.TextXAlignment.Right
+
+    local btn = Instance.new("TextButton", row)
+    btn.Size = UDim2.new(0, 80, 0, 26)
+    btn.Position = UDim2.new(1, -88, 0.5, -13)
+    btn.BackgroundColor3 = C.input
+    btn.Text = "ARM SPY"
+    btn.TextColor3 = C.white
+    btn.TextSize = 10
+    btn.Font = Enum.Font.GothamMedium
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    local btnStroke = Instance.new("UIStroke", btn)
+    btnStroke.Color = C.border
+    btnStroke.Thickness = 1
+
+    local function setSpyState(state)
+        if state == "armed" then
+            btn.Text = "ARMED"
+            btn.BackgroundColor3 = C.red
+            btn.TextColor3 = C.white
+            btnStroke.Color = C.red
+            statusLbl.Text = "Waiting..."
+            statusLbl.TextColor3 = C.amber
+        elseif state == "captured" then
+            btn.Text = "CAPTURED"
+            btn.BackgroundColor3 = C.green
+            btn.TextColor3 = C.white
+            btnStroke.Color = C.green
+            statusLbl.Text = "Captured ✅"
+            statusLbl.TextColor3 = C.green
+        else
+            btn.Text = "ARM SPY"
+            btn.BackgroundColor3 = C.input
+            btn.TextColor3 = C.white
+            btnStroke.Color = C.border
+            statusLbl.Text = "Uncaptured"
+            statusLbl.TextColor3 = C.muted
+        end
+    end
+
+    btn.MouseButton1Click:Connect(function()
+        if states.spyActive or capturedRemote then return end
+        states.spyActive = true
+        setSpyState("armed")
+        showNotification("🕵️ Remote Spy Armed! Manually plant 1 crop now.")
+        task.delay(10, function()
+            if states.spyActive then
+                states.spyActive = false
+                setSpyState("idle")
+                showNotification("⏱️ Remote Spy Timed Out")
+            end
+        end)
+    end)
+
+    task.spawn(function()
+        while true do
+            if capturedRemote and btn.Text ~= "CAPTURED" then
+                setSpyState("captured")
+                statusLbl.Text = capturedRemote.Name
+            end
+            task.wait(0.2)
+        end
+    end)
+end
+
+-- Pickup row: label + [− val +] stepper + toggle pill
+local function makePickupRow(parent,label,stateKey,radiusKey)
     local row=Instance.new("Frame",parent)
-    row.Size=UDim2.new(1,0,0,40) row.BackgroundColor3=C.row
-    row.BorderSizePixel=0 row.LayoutOrder=nlo()
+    row.Size=UDim2.new(1,0,0,40) row.BackgroundColor3=C.row row.BorderSizePixel=0 row.LayoutOrder=nlo()
     Instance.new("UICorner",row).CornerRadius=UDim.new(0,8)
-    local stroke=Instance.new("UIStroke",row)
-    stroke.Color=C.border stroke.Thickness=1
+    local stroke=Instance.new("UIStroke",row) stroke.Color=C.border stroke.Thickness=1
 
     local lbl=Instance.new("TextLabel",row)
-    lbl.Size=UDim2.new(1,-148,1,0) lbl.Position=UDim2.new(0,14,0,0)
+    lbl.Size=UDim2.new(1,-160,1,0) lbl.Position=UDim2.new(0,14,0,0)
     lbl.BackgroundTransparency=1 lbl.Text=label
-    lbl.TextColor3=C.white lbl.TextSize=10
+    lbl.TextColor3=C.muted lbl.TextSize=10
     lbl.Font=Enum.Font.GothamMedium lbl.TextXAlignment=Enum.TextXAlignment.Left
 
-    local rLbl=Instance.new("TextLabel",row)
-    rLbl.Size=UDim2.new(0,12,0,20) rLbl.Position=UDim2.new(1,-146,0.5,-10)
-    rLbl.BackgroundTransparency=1 rLbl.Text="r:" rLbl.TextColor3=C.muted
-    rLbl.TextSize=8 rLbl.Font=Enum.Font.GothamBold
+    local stepper=Instance.new("Frame",row)
+    stepper.Size=UDim2.new(0,88,0,26) stepper.Position=UDim2.new(1,-148,0.5,-13)
+    stepper.BackgroundColor3=C.input stepper.BorderSizePixel=0
+    Instance.new("UICorner",stepper).CornerRadius=UDim.new(0,6)
+    Instance.new("UIStroke",stepper).Color=C.border
 
-    local box=Instance.new("TextBox",row)
-    box.Size=UDim2.new(0,42,0,24) box.Position=UDim2.new(1,-132,0.5,-12)
-    box.BackgroundColor3=C.input box.Text=tostring(pickupRadii[radiusKey])
-    box.TextColor3=C.white box.TextSize=10 box.Font=Enum.Font.GothamMedium
-    Instance.new("UICorner",box).CornerRadius=UDim.new(0,6)
-    local bs=Instance.new("UIStroke",box) bs.Color=C.border bs.Thickness=1
-    box.FocusLost:Connect(function()
-        local v=tonumber(box.Text)
-        if v then pickupRadii[radiusKey]=math.clamp(v,1,999)
-        else box.Text=tostring(pickupRadii[radiusKey]) end
+    local minusBtn=Instance.new("TextButton",stepper)
+    minusBtn.Size=UDim2.new(0,26,1,0) minusBtn.BackgroundTransparency=1
+    minusBtn.Text="−" minusBtn.TextColor3=C.accent minusBtn.TextSize=14 minusBtn.Font=Enum.Font.GothamBold
+
+    local valLbl=Instance.new("TextLabel",stepper)
+    valLbl.Size=UDim2.new(1,-52,1,0) valLbl.Position=UDim2.new(0,26,0,0)
+    valLbl.BackgroundTransparency=1 valLbl.Text=tostring(pickupRadii[radiusKey])
+    valLbl.TextColor3=C.white valLbl.TextSize=10 valLbl.Font=Enum.Font.GothamBold
+
+    local plusBtn=Instance.new("TextButton",stepper)
+    plusBtn.Size=UDim2.new(0,26,1,0) plusBtn.Position=UDim2.new(1,-26,0,0)
+    plusBtn.BackgroundTransparency=1
+    plusBtn.Text="+" plusBtn.TextColor3=C.accent plusBtn.TextSize=13 plusBtn.Font=Enum.Font.GothamBold
+
+    minusBtn.MouseButton1Click:Connect(function()
+        pickupRadii[radiusKey]=math.max(5,pickupRadii[radiusKey]-5)
+        valLbl.Text=tostring(pickupRadii[radiusKey])
+    end)
+    plusBtn.MouseButton1Click:Connect(function()
+        pickupRadii[radiusKey]=math.min(999,pickupRadii[radiusKey]+5)
+        valLbl.Text=tostring(pickupRadii[radiusKey])
     end)
 
     local pill=Instance.new("Frame",row)
-    pill.Size=UDim2.new(0,40,0,22) pill.Position=UDim2.new(1,-52,0.5,-11)
+    pill.Size=UDim2.new(0,40,0,22) pill.Position=UDim2.new(1,-50,0.5,-11)
     pill.BackgroundColor3=C.pill_of pill.BorderSizePixel=0
     Instance.new("UICorner",pill).CornerRadius=UDim.new(1,0)
-
     local knob=Instance.new("Frame",pill)
     knob.Size=UDim2.new(0,16,0,16) knob.Position=UDim2.new(0,3,0.5,-8)
     knob.BackgroundColor3=C.knob knob.BorderSizePixel=0
@@ -575,7 +908,9 @@ local function makePickupRow(parent, label, stateKey, radiusKey)
     end
 
     local btn=Instance.new("TextButton",row)
-    btn.Size=UDim2.new(1,0,1,0) btn.BackgroundTransparency=1 btn.Text=""
+    btn.Size=UDim2.new(1,0,1,0) btn.BackgroundTransparency=1 btn.Text="" btn.ZIndex=1
+    stepper.ZIndex=3 minusBtn.ZIndex=4 plusBtn.ZIndex=4 valLbl.ZIndex=4
+    pill.ZIndex=3 knob.ZIndex=4
     btn.MouseButton1Click:Connect(function()
         states[stateKey]=not states[stateKey]
         setV(states[stateKey])
@@ -593,7 +928,7 @@ makeInput(pageFarm,"Attack CPS",CLICK_CPS,function(v) CLICK_CPS=v end)
 makeInput(pageFarm,"Attack Range (studs)",ATTACK_RANGE,function(v) ATTACK_RANGE=v end)
 
 makeSection(pageFarm,"Auto Cook Fish")
-local calibLbl = makeInfo(pageFarm,"🐟  Open an oven → hover cursor over the Raw Fish slot → press  J  to lock that position in.",54)
+local calibLbl=makeInfo(pageFarm,"🐟  Open an oven → hover cursor over the Raw Fish slot → press  J  to lock that position in.",54)
 local calibStat=makeInfo(pageFarm,"Status: NOT calibrated  —  press J",18)
 calibStat.TextColor3=C.red
 
@@ -617,6 +952,24 @@ UserInputService.InputBegan:Connect(function(inp,proc)
     end
 end)
 
+makeSection(pageFarm,"Auto Plant & Harvest")
+makeCropSelector(pageFarm, "Crop Selection", "Banana", function(crop)
+    selectedCrop = crop
+end)
+
+makeInfo(pageFarm, "🕵️  Click 'ARM SPY', then manually plant 1 crop in-game. The script will intercept the remote and use it forever, bypassing game updates.", 44)
+
+makeSpyButton(pageFarm, "Remote Plant Spy")
+
+makeToggle(pageFarm, "Auto Plant", "autoPlant", function(on)
+    if on then startAutoPlant() else stopAutoPlant() end
+end)
+makeInput(pageFarm, "Plant Box Radius (studs)", PLANT_RADIUS, function(v) plantRadius = v end)
+
+makeToggle(pageFarm, "Auto Break", "autoBreak", function(on)
+    if on then startAutoBreak() else stopAutoBreak() end
+end)
+
 -- ═══════════════════════════════════════════════════════════
 --  PICKUPS TAB
 -- ═══════════════════════════════════════════════════════════
@@ -627,25 +980,25 @@ makePickupRow(pagePickup,"Wood",                "pickupWood",              "pick
 makePickupRow(pagePickup,"Leaves",              "pickupLeaves",            "pickupLeaves")
 makePickupRow(pagePickup,"Bananas",             "pickupBananas",           "pickupBananas")
 
-makeSection(pagePickup,"Meat")
+makeSection(pagePickup,"Meat & Food")
 makePickupRow(pagePickup,"Cooked Fish",         "pickupCookedFish",        "pickupCookedFish")
 makePickupRow(pagePickup,"Cooked Meat",         "pickupCookedMeat",        "pickupCookedMeat")
 makePickupRow(pagePickup,"Raw Meat",            "pickupRaw",               "pickupRaw")
 makePickupRow(pagePickup,"Raw Fish",            "pickupRawFish",           "pickupRawFish")
 makePickupRow(pagePickup,"Raw Morsel",          "pickupRawMorsel",         "pickupRawMorsel")
 
-
 makeSection(pagePickup,"Currency")
 makePickupRow(pagePickup,"Gems",                "pickupGem",               "pickupGem")
 makePickupRow(pagePickup,"Gold Coins",          "pickupGoldCoins",         "pickupGoldCoins")
 makePickupRow(pagePickup,"Silver Coins",        "pickupSilverCoins",       "pickupSilverCoins")
+makePickupRow(pagePickup,"Stardust",            "pickupStardust",          "pickupStardust")
 
 makeSection(pagePickup,"Essence")
 makePickupRow(pagePickup,"Essence",             "pickupEssence",           "pickupEssence")
 makePickupRow(pagePickup,"Void Essence",        "pickupVoidEssence",       "pickupVoidEssence")
 makePickupRow(pagePickup,"Chief Essence",       "pickupChiefEssence",      "pickupChiefEssence")
 
-makeSection(pagePickup,"Gems")
+makeSection(pagePickup,"Gems & Drops")
 makePickupRow(pagePickup,"Pink Diamond",        "pickupPinkDiamond",       "pickupPinkDiamond")
 makePickupRow(pagePickup,"Crystal",             "pickupCrystal",           "pickupCrystal")
 
@@ -657,7 +1010,7 @@ makePickupRow(pagePickup,"Strange Bag",         "pickupStrangeBag",        "pick
 makePickupRow(pagePickup,"Ancient Hammer",      "pickupAncientHammer",     "pickupAncientHammer")
 
 makeSection(pagePickup,"Keys")
-makePickupRow(pagePickup,"Adurite Keys",       "pickupKeys",              "pickupKeys")
+makePickupRow(pagePickup,"Adurite Keys",        "pickupKeys",              "pickupKeys")
 makePickupRow(pagePickup,"Spirit Key",          "pickupSpiritKey",         "pickupSpiritKey")
 makePickupRow(pagePickup,"Old Key",             "pickupOldKey",            "pickupOldKey")
 makePickupRow(pagePickup,"Strange Key",         "pickupStrangeKey",        "pickupStrangeKey")
@@ -666,14 +1019,13 @@ makeSection(pagePickup,"God Items")
 makePickupRow(pagePickup,"God Halo",            "pickupGodHalo",           "pickupGodHalo")
 makePickupRow(pagePickup,"God Chestplate",      "pickupGodChestplate",     "pickupGodChestplate")
 makePickupRow(pagePickup,"God Leggings",        "pickupGodLeggings",       "pickupGodLeggings")
-makePickupRow(pagePickup,"God Pick",         "pickupGodPickaxe",        "pickupGodPickaxe")
+makePickupRow(pagePickup,"God Pick",            "pickupGodPickaxe",        "pickupGodPickaxe")
 makePickupRow(pagePickup,"God Axe",             "pickupGodAxe",            "pickupGodAxe")
 makePickupRow(pagePickup,"God Rock",            "pickupGodRock",           "pickupGodRock")
 makePickupRow(pagePickup,"God Rod",             "pickupGodRod",            "pickupGodRod")
 makePickupRow(pagePickup,"God Bag",             "pickupGodBag",            "pickupGodBag")
 makePickupRow(pagePickup,"God Sailboat",        "pickupGodSailboat",       "pickupGodSailboat")
 makePickupRow(pagePickup,"God Hut",             "pickupGodHut",            "pickupGodHut")
-makePickupRow(pagePickup,"Stardust",            "pickupStardust",          "pickupStardust")
 
 -- ═══════════════════════════════════════════════════════════
 --  SETTINGS TAB
@@ -699,7 +1051,7 @@ kbInfo.TextColor3=C.muted kbInfo.TextSize=10
 kbInfo.Font=Enum.Font.Code kbInfo.TextXAlignment=Enum.TextXAlignment.Left
 kbInfo.TextWrapped=true
 
--- ══════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════
 --  M KEYBIND
 -- ═══════════════════════════════════════════════════════════
 UserInputService.InputBegan:Connect(function(inp,proc)
@@ -787,7 +1139,11 @@ end)
 RunService.Heartbeat:Connect(function()
     if states.autoCookFish then
         local n=#getNearbyOvens()
-        statusLbl.Text = n>0 and ("🔥 "..n.." oven"..(n==1 and "" or "s")) or "⏳ scanning"
+        statusLbl.Text=n>0 and ("🔥 "..n.." oven"..(n==1 and "" or "s")) or "⏳ scanning"
+    elseif states.autoPlant then
+        local n=#getNearbyPlantBoxes()
+        statusLbl.Text=n>0 and ("🌱 "..n.." box"..(n==1 and "" or "es")) or "⏳ scanning"
+        TweenService:Create(statusPill,TweenInfo.new(0.2),{BackgroundColor3=n>0 and Color3.fromRGB(52,211,100) or C.pill_of}):Play()
     end
 end)
 
