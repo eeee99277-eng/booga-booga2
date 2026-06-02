@@ -645,7 +645,7 @@ makePickupRow(pagePickup,"Essence",             "pickupEssence",           "pick
 makePickupRow(pagePickup,"Void Essence",        "pickupVoidEssence",       "pickupVoidEssence")
 makePickupRow(pagePickup,"Chief Essence",       "pickupChiefEssence",      "pickupChiefEssence")
 
-makeSection(pagePickup,"Gems & Drops")
+makeSection(pagePickup,"Gems")
 makePickupRow(pagePickup,"Pink Diamond",        "pickupPinkDiamond",       "pickupPinkDiamond")
 makePickupRow(pagePickup,"Crystal",             "pickupCrystal",           "pickupCrystal")
 
