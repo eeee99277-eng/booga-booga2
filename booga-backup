@@ -645,7 +645,7 @@ makePickupRow(pagePickup,"Essence",             "pickupEssence",           "pick
 makePickupRow(pagePickup,"Void Essence",        "pickupVoidEssence",       "pickupVoidEssence")
 makePickupRow(pagePickup,"Chief Essence",       "pickupChiefEssence",      "pickupChiefEssence")
 
-makeSection(pagePickup,"Gems & Drops")
+makeSection(pagePickup,"Gems")
 makePickupRow(pagePickup,"Pink Diamond",        "pickupPinkDiamond",       "pickupPinkDiamond")
 makePickupRow(pagePickup,"Crystal",             "pickupCrystal",           "pickupCrystal")
 
@@ -666,7 +666,7 @@ makeSection(pagePickup,"God Items")
 makePickupRow(pagePickup,"God Halo",            "pickupGodHalo",           "pickupGodHalo")
 makePickupRow(pagePickup,"God Chestplate",      "pickupGodChestplate",     "pickupGodChestplate")
 makePickupRow(pagePickup,"God Leggings",        "pickupGodLeggings",       "pickupGodLeggings")
-makePickupRow(pagePickup,"God Pickaxe",         "pickupGodPickaxe",        "pickupGodPickaxe")
+makePickupRow(pagePickup,"God Pick",         "pickupGodPickaxe",        "pickupGodPickaxe")
 makePickupRow(pagePickup,"God Axe",             "pickupGodAxe",            "pickupGodAxe")
 makePickupRow(pagePickup,"God Rock",            "pickupGodRock",           "pickupGodRock")
 makePickupRow(pagePickup,"God Rod",             "pickupGodRod",            "pickupGodRod")
@@ -723,7 +723,7 @@ local matchers={
     {k="pickupCookedFish",        f=function(n) return n:find("cooked fish") end},
     {k="pickupGold",              f=function(n) return n:find("gold bar") end},
     {k="pickupIron",              f=function(n) return n:find("iron bar") end},
-    {k="pickupEssence",           f=function(n) return n:find("essence") and not n:find("void") and not n:find("chief") end},
+    {k="pickupEssence",           f=function(n) return n:find("essence") and not n:find("void") and not n:find("chief") and not n:find("earth") and not n:find("air") and not n:find("light") end},
     {k="pickupVoidEssence",       f=function(n) return n:find("void essence") end},
     {k="pickupChiefEssence",      f=function(n) return n:find("chief essence") end},
     {k="pickupPinkDiamond",       f=function(n) return n:find("pink diamond") end},
@@ -739,7 +739,7 @@ local matchers={
     {k="pickupGodHalo",           f=function(n) return n:find("god halo") end},
     {k="pickupGodChestplate",     f=function(n) return n:find("god chestplate") end},
     {k="pickupGodLeggings",       f=function(n) return n:find("god leggings") end},
-    {k="pickupGodPickaxe",        f=function(n) return n:find("god pickaxe") end},
+    {k="pickupGodPickaxe",        f=function(n) return n:find("god pick") end},
     {k="pickupGodAxe",            f=function(n) return n:find("god axe") end},
     {k="pickupGodRock",           f=function(n) return n:find("god rock") end},
     {k="pickupGodRod",            f=function(n) return n:find("god rod") end},
