@@ -723,7 +723,7 @@ local matchers={
     {k="pickupCookedFish",        f=function(n) return n:find("cooked fish") end},
     {k="pickupGold",              f=function(n) return n:find("gold bar") end},
     {k="pickupIron",              f=function(n) return n:find("iron bar") end},
-    {k="pickupEssence",           f=function(n) return n:find("essence") and not n:find("void") and not n:find("chief") n:find("earth") n:find("air") n:find("light") end},
+    {k="pickupEssence",           f=function(n) return n:find("essence") and not n:find("void") and not n:find("chief") and not n:find("earth") and not n:find("air") and not n:find("light") end},
     {k="pickupVoidEssence",       f=function(n) return n:find("void essence") end},
     {k="pickupChiefEssence",      f=function(n) return n:find("chief essence") end},
     {k="pickupPinkDiamond",       f=function(n) return n:find("pink diamond") end},
