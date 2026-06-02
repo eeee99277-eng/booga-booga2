@@ -754,7 +754,7 @@ local matchers={
     {k="pickupGoldCoins",         f=function(n) return n:find("gold coin") end},
     {k="pickupSilverCoins",       f=function(n) return n:find("silver coin") end},
     {k="pickupGem",               f=function(n) return n:find("gem") end},
-    {k="pickupCookedMeat",               f=function(n) return n:find("Cooked Meat") end},
+    {k="pickupCookedMeat",        f=function(n) return n:find("cooked meat") end},
 }
 
 RunService.Heartbeat:Connect(function()
