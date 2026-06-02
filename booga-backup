@@ -16,15 +16,17 @@ local OVEN_RADIUS      = 25
 local FISH_PER_OVEN    = 9
 
 local pickupRadii = {
-    pickupKeys=20, pickupRaw=20, pickupRawFish=35, pickupCookedFish=20,
-    pickupGold=20, pickupIron=20, pickupEssence=20, pickupVoidEssence=20,
-    pickupChiefEssence=20, pickupPinkDiamond=20, pickupCrystal=20,
-    pickupMoltenBow=20, pickupMoltenShield=20, pickupStrangeGreatsword=20,
-    pickupStrangeBag=20, pickupAncientHammer=20,
-    pickupSpiritKey=20, pickupOldKey=20, pickupStrangeKey=20,
-    pickupGodHalo=20, pickupGodChestplate=20, pickupGodLeggings=20,
-    pickupGodPickaxe=20, pickupGodAxe=20, pickupGodRock=20,
-    pickupGodRod=20, pickupGodBag=20, pickupGodSailboat=20, pickupGodHut=20,
+    pickupKeys=35, pickupRaw=20, pickupRawFish=35, pickupCookedFish=35,
+    pickupGold=35, pickupIron=20, pickupEssence=35, pickupVoidEssence=20,
+    pickupChiefEssence=35, pickupPinkDiamond=20, pickupCrystal=35,
+    pickupMoltenBow=35, pickupMoltenShield=35, pickupStrangeGreatsword=20,
+    pickupStrangeBag=35, pickupAncientHammer=35,
+    pickupSpiritKey=35, pickupOldKey=35, pickupStrangeKey=35,
+    pickupGodHalo=35, pickupGodChestplate=35, pickupGodLeggings=35,
+    pickupGodPickaxe=35, pickupGodAxe=35, pickupGodRock=35,
+    pickupGodRod=35, pickupGodBag=35, pickupGodSailboat=35, pickupGodHut=35, 
+    pickupGem=35, pickupRawMorsel=35, pickupWood=20, pickupLeaves=20, 
+    pickupGoldCoins=35, pickupSilverCoins=35, pickupBananas=20, pickupStardust=35, pickupCookedMeat=20,
 }
 
 local states = {
@@ -40,7 +42,9 @@ local states = {
     pickupGodHalo=false, pickupGodChestplate=false, pickupGodLeggings=false,
     pickupGodPickaxe=false, pickupGodAxe=false, pickupGodRock=false,
     pickupGodRod=false, pickupGodBag=false, pickupGodSailboat=false, pickupGodHut=false,
-    antiTab=false, antiLag=false,
+    antiTab=false, antiLag=false, 
+    pickupGem=false, pickupWood=false, pickupSilverCoins=false, pickupGoldCoins=false, 
+    pickupRawMorsel=false, pickupLeaves=false, pickupBananas=false, pickupStardust=false, pickupCookedMeat=false,
 }
 
 if playerGui:FindFirstChild("BoogaHub") then playerGui.BoogaHub:Destroy() end
@@ -97,7 +101,7 @@ local function isMouseOverGUI()
     local m   = player:GetMouse()
     local pos = guiFrame.AbsolutePosition
     local sz  = guiFrame.AbsoluteSize
-    local pad = 80  -- generous padding so fish clicks can't bleed onto GUI
+    local pad = 80
     return m.X >= pos.X-pad and m.X <= pos.X+sz.X+pad
        and m.Y >= pos.Y-pad and m.Y <= pos.Y+sz.Y+pad
 end
@@ -159,12 +163,10 @@ local function getNearbyOvens()
 end
 
 local function clickFishNTimes(x, y)
-    -- Guard: never click if cursor is inside GUI bounds
     if isMouseOverGUI() then return end
     VirtualInputManager:SendMouseMoveEvent(x, y, game)
     task.wait(0.03)
     for i = 1, FISH_PER_OVEN do
-        -- Re-check each iteration so if GUI opens mid-click we abort
         if isMouseOverGUI() then break end
         VirtualInputManager:SendMouseButtonEvent(x,y,0,true, game,0)
         task.wait(0.015)
@@ -175,7 +177,7 @@ end
 
 local function runAutoCook()
     isCooking = true
-    local filled = {}   -- models filled this cycle
+    local filled = {}
 
     while states.autoCookFish do
         local ch = player.Character
@@ -183,12 +185,11 @@ local function runAutoCook()
 
         local ovens = getNearbyOvens()
         if #ovens == 0 then
-            filled = {}     -- moved away, reset
+            filled = {}
             task.wait(0.3)
             continue
         end
 
-        -- Build the unfilled list for this pass
         local queue = {}
         for _, o in ipairs(ovens) do
             if not filled[o.model] then
@@ -196,10 +197,8 @@ local function runAutoCook()
             end
         end
 
-        -- All ovens done this cycle → reset and start a new cycle immediately
         if #queue == 0 then
             filled = {}
-            -- Don't sleep — loop straight back and refill from scratch
             continue
         end
 
@@ -212,7 +211,6 @@ local function runAutoCook()
             if not vis then continue end
             local ox, oy = math.floor(sp.X), math.floor(sp.Y)
 
-            -- Hover then click the oven
             VirtualInputManager:SendMouseMoveEvent(ox, oy, game)
             task.wait(0.06)
             VirtualInputManager:SendMouseButtonEvent(ox, oy, 0, true,  game, 0)
@@ -223,23 +221,16 @@ local function runAutoCook()
                 task.wait(0.04)
                 local fx, fy = getFishPos()
                 clickFishNTimes(fx, fy)
-
-                -- Mark filled BEFORE closing so we never re-open it this cycle
                 filled[od.model] = true
-
                 task.wait(0.03)
                 pressKey(Enum.KeyCode.E)
-                task.wait(0.06)     -- let E register before moving to next oven
+                task.wait(0.06)
             else
-                -- Oven didn't open (already full / blocked) — still mark it
-                -- so we don't hammer it repeatedly this cycle
                 filled[od.model] = true
-                pressKey(Enum.KeyCode.E)    -- close anything that may have opened
+                pressKey(Enum.KeyCode.E)
                 task.wait(0.05)
             end
         end
-        -- After finishing the queue, loop immediately — queue will be empty
-        -- next iteration which triggers the cycle reset above
     end
     isCooking = false
 end
@@ -291,29 +282,22 @@ local function stopAutoAttack()
 end
 
 -- ═══════════════════════════════════════════════════════════
---  GUI  ── new dark slate design
+--  GUI
 -- ═══════════════════════════════════════════════════════════
 local C = {
-    -- Backgrounds
-    win     = Color3.fromRGB(15, 15, 20),       -- main window
-    panel   = Color3.fromRGB(20, 20, 28),       -- content area
-    row     = Color3.fromRGB(26, 26, 36),       -- item rows
-    rowHov  = Color3.fromRGB(32, 32, 44),       -- hovered rows
-    input   = Color3.fromRGB(12, 12, 18),       -- text box bg
-
-    -- Tabs
+    win     = Color3.fromRGB(15, 15, 20),
+    panel   = Color3.fromRGB(20, 20, 28),
+    row     = Color3.fromRGB(26, 26, 36),
+    rowHov  = Color3.fromRGB(32, 32, 44),
+    input   = Color3.fromRGB(12, 12, 18),
     tabBar  = Color3.fromRGB(11, 11, 16),
-    tabSel  = Color3.fromRGB(99, 102, 241),     -- indigo active tab
+    tabSel  = Color3.fromRGB(99, 102, 241),
     tabTxt  = Color3.fromRGB(120, 120, 160),
-
-    -- Accents
-    accent  = Color3.fromRGB(99, 102, 241),     -- indigo
-    accentB = Color3.fromRGB(139, 92, 246),     -- violet (second accent)
+    accent  = Color3.fromRGB(99, 102, 241),
+    accentB = Color3.fromRGB(139, 92, 246),
     green   = Color3.fromRGB(52, 211, 153),
     red     = Color3.fromRGB(248, 113, 113),
     amber   = Color3.fromRGB(251, 191, 36),
-
-    -- Borders & text
     border  = Color3.fromRGB(40, 40, 60),
     white   = Color3.fromRGB(240, 240, 255),
     muted   = Color3.fromRGB(100, 100, 140),
@@ -326,7 +310,6 @@ local sg = Instance.new("ScreenGui")
 sg.Name = "BoogaHub" sg.ResetOnSpawn=false
 sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling sg.Parent=playerGui
 
--- ── Window ──
 local WIN_W, WIN_H = 310, 620
 local win = Instance.new("Frame")
 win.Name="Win" win.Size=UDim2.new(0,WIN_W,0,WIN_H)
@@ -338,20 +321,17 @@ local winStroke=Instance.new("UIStroke",win)
 winStroke.Color=C.accent winStroke.Thickness=1.2
 guiFrame = win
 
--- ── Header ──
 local HDR_H = 56
 local hdr = Instance.new("Frame",win)
 hdr.Size=UDim2.new(1,0,0,HDR_H) hdr.BackgroundColor3=C.tabBar
 hdr.BorderSizePixel=0
 Instance.new("UICorner",hdr).CornerRadius=UDim.new(0,14)
 
--- coloured left stripe
 local stripe = Instance.new("Frame",hdr)
 stripe.Size=UDim2.new(0,4,1,-16) stripe.Position=UDim2.new(0,0,0,8)
 stripe.BackgroundColor3=C.accent stripe.BorderSizePixel=0
 Instance.new("UICorner",stripe).CornerRadius=UDim.new(0,4)
 
--- icon circle
 local iconCircle = Instance.new("Frame",hdr)
 iconCircle.Size=UDim2.new(0,34,0,34) iconCircle.Position=UDim2.new(0,14,0.5,-17)
 iconCircle.BackgroundColor3=C.accent iconCircle.BorderSizePixel=0
@@ -382,7 +362,6 @@ statusLbl.Size=UDim2.new(1,0,1,0) statusLbl.BackgroundTransparency=1
 statusLbl.Text="" statusLbl.TextColor3=C.white
 statusLbl.TextSize=8 statusLbl.Font=Enum.Font.GothamBold
 
--- ── Tab bar ──
 local TAB_H = 38
 local tabBar=Instance.new("Frame",win)
 tabBar.Size=UDim2.new(1,0,0,TAB_H) tabBar.Position=UDim2.new(0,0,0,HDR_H)
@@ -390,12 +369,10 @@ tabBar.BackgroundColor3=C.tabBar tabBar.BorderSizePixel=0
 local tbl=Instance.new("UIListLayout",tabBar)
 tbl.FillDirection=Enum.FillDirection.Horizontal tbl.SortOrder=Enum.SortOrder.LayoutOrder
 
--- divider
 local div=Instance.new("Frame",win)
 div.Size=UDim2.new(1,0,0,1) div.Position=UDim2.new(0,0,0,HDR_H+TAB_H)
 div.BackgroundColor3=C.border div.BorderSizePixel=0
 
--- ── Content pages ──
 local CONTENT_Y = HDR_H+TAB_H+1
 local CONTENT_H = WIN_H-CONTENT_Y
 
@@ -418,11 +395,10 @@ local pagePickup  = makePage()
 local pageSettings= makePage()
 local allPages    = {pageFarm,pagePickup,pageSettings}
 
--- ── Tab buttons ──
 local tabDefs = {
     {icon="⚔",  label="FARM"},
     {icon="🎒", label="PICKUPS"},
-    {icon="⚙",  label="SETTINGS"},
+    {icon="",  label="SETTINGS"},
 }
 local tabBtns = {}
 local activeTab = 1
@@ -454,7 +430,6 @@ end
 local lo=0
 local function nlo() lo+=1 return lo end
 
--- Section header with decorative line
 local function makeSection(parent, text)
     local wrap=Instance.new("Frame",parent)
     wrap.Size=UDim2.new(1,0,0,26) wrap.BackgroundTransparency=1
@@ -464,14 +439,12 @@ local function makeSection(parent, text)
     lbl.BackgroundTransparency=1 lbl.Text=text:upper()
     lbl.TextColor3=C.accent lbl.TextSize=9
     lbl.Font=Enum.Font.GothamBold lbl.TextXAlignment=Enum.TextXAlignment.Left
-    -- accent dot
     local dot=Instance.new("Frame",wrap)
     dot.Size=UDim2.new(0,3,0,14) dot.Position=UDim2.new(0,0,0.5,-7)
     dot.BackgroundColor3=C.accent dot.BorderSizePixel=0
     Instance.new("UICorner",dot).CornerRadius=UDim.new(1,0)
 end
 
--- Standard toggle row
 local function makeToggle(parent, label, stateKey, cb)
     local row=Instance.new("Frame",parent)
     row.Size=UDim2.new(1,0,0,40) row.BackgroundColor3=C.row
@@ -515,7 +488,6 @@ local function makeToggle(parent, label, stateKey, cb)
     end)
 end
 
--- Input row (label + text box)
 local function makeInput(parent, label, default, cb)
     local row=Instance.new("Frame",parent)
     row.Size=UDim2.new(1,0,0,40) row.BackgroundColor3=C.row
@@ -541,7 +513,6 @@ local function makeInput(parent, label, default, cb)
     end)
 end
 
--- Info text block
 local function makeInfo(parent, text, h)
     h = h or 44
     local lbl=Instance.new("TextLabel",parent)
@@ -552,7 +523,6 @@ local function makeInfo(parent, text, h)
     return lbl
 end
 
--- Pickup row: label + radius box + toggle pill
 local function makePickupRow(parent, label, stateKey, radiusKey)
     local row=Instance.new("Frame",parent)
     row.Size=UDim2.new(1,0,0,40) row.BackgroundColor3=C.row
@@ -567,7 +537,6 @@ local function makePickupRow(parent, label, stateKey, radiusKey)
     lbl.TextColor3=C.white lbl.TextSize=10
     lbl.Font=Enum.Font.GothamMedium lbl.TextXAlignment=Enum.TextXAlignment.Left
 
-    -- "r:" label
     local rLbl=Instance.new("TextLabel",row)
     rLbl.Size=UDim2.new(0,12,0,20) rLbl.Position=UDim2.new(1,-146,0.5,-10)
     rLbl.BackgroundTransparency=1 rLbl.Text="r:" rLbl.TextColor3=C.muted
@@ -638,7 +607,6 @@ makeToggle(pageFarm,"Auto Cook Fish","autoCookFish",function(on)
 end)
 makeInput(pageFarm,"Oven Detect Radius",OVEN_RADIUS,function(v) OVEN_RADIUS=v end)
 
--- J calibration
 UserInputService.InputBegan:Connect(function(inp,proc)
     if inp.KeyCode==Enum.KeyCode.J and not proc then
         local m=player:GetMouse()
@@ -653,12 +621,24 @@ end)
 --  PICKUPS TAB
 -- ═══════════════════════════════════════════════════════════
 makeSection(pagePickup,"Resources")
-makePickupRow(pagePickup,"Adurite Keys",       "pickupKeys",              "pickupKeys")
-makePickupRow(pagePickup,"Raw Meat",            "pickupRaw",               "pickupRaw")
-makePickupRow(pagePickup,"Raw Fish",            "pickupRawFish",           "pickupRawFish")
-makePickupRow(pagePickup,"Cooked Fish",         "pickupCookedFish",        "pickupCookedFish")
 makePickupRow(pagePickup,"Gold Bars",           "pickupGold",              "pickupGold")
 makePickupRow(pagePickup,"Iron Bars",           "pickupIron",              "pickupIron")
+makePickupRow(pagePickup,"Wood",                "pickupWood",              "pickupWood")
+makePickupRow(pagePickup,"Leaves",              "pickupLeaves",            "pickupLeaves")
+makePickupRow(pagePickup,"Bananas",             "pickupBananas",           "pickupBananas")
+
+makeSection(pagePickup,"Meat")
+makePickupRow(pagePickup,"Cooked Fish",         "pickupCookedFish",        "pickupCookedFish")
+makePickupRow(pagePickup,"Cooked Meat",         "pickupCookedMeat",        "pickupCookedMeat")
+makePickupRow(pagePickup,"Raw Meat",            "pickupRaw",               "pickupRaw")
+makePickupRow(pagePickup,"Raw Fish",            "pickupRawFish",           "pickupRawFish")
+makePickupRow(pagePickup,"Raw Morsel",          "pickupRawMorsel",         "pickupRawMorsel")
+
+
+makeSection(pagePickup,"Currency")
+makePickupRow(pagePickup,"Gems",                "pickupGem",               "pickupGem")
+makePickupRow(pagePickup,"Gold Coins",          "pickupGoldCoins",         "pickupGoldCoins")
+makePickupRow(pagePickup,"Silver Coins",        "pickupSilverCoins",       "pickupSilverCoins")
 
 makeSection(pagePickup,"Essence")
 makePickupRow(pagePickup,"Essence",             "pickupEssence",           "pickupEssence")
@@ -677,6 +657,7 @@ makePickupRow(pagePickup,"Strange Bag",         "pickupStrangeBag",        "pick
 makePickupRow(pagePickup,"Ancient Hammer",      "pickupAncientHammer",     "pickupAncientHammer")
 
 makeSection(pagePickup,"Keys")
+makePickupRow(pagePickup,"Adurite Keys",       "pickupKeys",              "pickupKeys")
 makePickupRow(pagePickup,"Spirit Key",          "pickupSpiritKey",         "pickupSpiritKey")
 makePickupRow(pagePickup,"Old Key",             "pickupOldKey",            "pickupOldKey")
 makePickupRow(pagePickup,"Strange Key",         "pickupStrangeKey",        "pickupStrangeKey")
@@ -692,6 +673,7 @@ makePickupRow(pagePickup,"God Rod",             "pickupGodRod",            "pick
 makePickupRow(pagePickup,"God Bag",             "pickupGodBag",            "pickupGodBag")
 makePickupRow(pagePickup,"God Sailboat",        "pickupGodSailboat",       "pickupGodSailboat")
 makePickupRow(pagePickup,"God Hut",             "pickupGodHut",            "pickupGodHut")
+makePickupRow(pagePickup,"Stardust",            "pickupStardust",          "pickupStardust")
 
 -- ═══════════════════════════════════════════════════════════
 --  SETTINGS TAB
@@ -717,7 +699,7 @@ kbInfo.TextColor3=C.muted kbInfo.TextSize=10
 kbInfo.Font=Enum.Font.Code kbInfo.TextXAlignment=Enum.TextXAlignment.Left
 kbInfo.TextWrapped=true
 
--- ═══════════════════════════════════════════════════════════
+-- ══════════════════════════════════════════════════════════
 --  M KEYBIND
 -- ═══════════════════════════════════════════════════════════
 UserInputService.InputBegan:Connect(function(inp,proc)
@@ -764,6 +746,15 @@ local matchers={
     {k="pickupGodBag",            f=function(n) return n:find("god bag") end},
     {k="pickupGodSailboat",       f=function(n) return n:find("god sailboat") end},
     {k="pickupGodHut",            f=function(n) return n:find("god hut") end},
+    {k="pickupRawMorsel",         f=function(n) return n:find("raw morsel") end},
+    {k="pickupStardust",          f=function(n) return n:find("stardust") end},
+    {k="pickupBananas",           f=function(n) return n:find("banana") end},
+    {k="pickupWood",              f=function(n) return n:find("wood") end},
+    {k="pickupLeaves",            f=function(n) return n:find("leaves") end},
+    {k="pickupGoldCoins",         f=function(n) return n:find("gold coin") end},
+    {k="pickupSilverCoins",       f=function(n) return n:find("silver coin") end},
+    {k="pickupGem",               f=function(n) return n:find("gem") end},
+    {k="pickupCookedMeat",        f=function(n) return n:find("cooked meat") end},
 }
 
 RunService.Heartbeat:Connect(function()
