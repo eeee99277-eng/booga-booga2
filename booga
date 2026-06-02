@@ -739,7 +739,7 @@ local matchers={
     {k="pickupGodHalo",           f=function(n) return n:find("god halo") end},
     {k="pickupGodChestplate",     f=function(n) return n:find("god chestplate") end},
     {k="pickupGodLeggings",       f=function(n) return n:find("god leggings") end},
-    {k="pickupGodPickaxe",        f=function(n) return n:find("god pickaxe") end},
+    {k="pickupGodPickaxe",        f=function(n) return n:find("god pick") end},
     {k="pickupGodAxe",            f=function(n) return n:find("god axe") end},
     {k="pickupGodRock",           f=function(n) return n:find("god rock") end},
     {k="pickupGodRod",            f=function(n) return n:find("god rod") end},
