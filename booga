@@ -16,17 +16,17 @@ local OVEN_RADIUS      = 25
 local FISH_PER_OVEN    = 9
 
 local pickupRadii = {
-    pickupKeys=20, pickupRaw=20, pickupRawFish=35, pickupCookedFish=20,
-    pickupGold=20, pickupIron=20, pickupEssence=20, pickupVoidEssence=20,
-    pickupChiefEssence=20, pickupPinkDiamond=20, pickupCrystal=20,
-    pickupMoltenBow=20, pickupMoltenShield=20, pickupStrangeGreatsword=20,
-    pickupStrangeBag=20, pickupAncientHammer=20,
-    pickupSpiritKey=20, pickupOldKey=20, pickupStrangeKey=20,
-    pickupGodHalo=20, pickupGodChestplate=20, pickupGodLeggings=20,
-    pickupGodPickaxe=20, pickupGodAxe=20, pickupGodRock=20,
-    pickupGodRod=20, pickupGodBag=20, pickupGodSailboat=20, pickupGodHut=20, 
-    pickupGem=20, pickupRawMorsel=20, pickupWood=20, pickupLeaves=20, 
-    pickupGoldCoins=20, pickupSilverCoins=20, pickupBananas=20, pickupStardust=20, pickupCookedMeat=20,
+    pickupKeys=35, pickupRaw=20, pickupRawFish=35, pickupCookedFish=35,
+    pickupGold=35, pickupIron=20, pickupEssence=35, pickupVoidEssence=20,
+    pickupChiefEssence=35, pickupPinkDiamond=20, pickupCrystal=35,
+    pickupMoltenBow=35, pickupMoltenShield=35, pickupStrangeGreatsword=20,
+    pickupStrangeBag=35, pickupAncientHammer=35,
+    pickupSpiritKey=35, pickupOldKey=35, pickupStrangeKey=35,
+    pickupGodHalo=35, pickupGodChestplate=35, pickupGodLeggings=35,
+    pickupGodPickaxe=35, pickupGodAxe=35, pickupGodRock=35,
+    pickupGodRod=35, pickupGodBag=35, pickupGodSailboat=35, pickupGodHut=35, 
+    pickupGem=35, pickupRawMorsel=35, pickupWood=20, pickupLeaves=20, 
+    pickupGoldCoins=35, pickupSilverCoins=35, pickupBananas=20, pickupStardust=35, pickupCookedMeat=20,
 }
 
 local states = {
