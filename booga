@@ -24,7 +24,8 @@ local pickupRadii = {
     pickupSpiritKey=20, pickupOldKey=20, pickupStrangeKey=20,
     pickupGodHalo=20, pickupGodChestplate=20, pickupGodLeggings=20,
     pickupGodPickaxe=20, pickupGodAxe=20, pickupGodRock=20,
-    pickupGodRod=20, pickupGodBag=20, pickupGodSailboat=20, pickupGodHut=20,
+    pickupGodRod=20, pickupGodBag=20, pickupGodSailboat=20, pickupGodHut=20, pickupGem=20, pickupRawMorsel=20, 
+    pickupWood=20, pickupLeaves=20, pickupGoldCoins=20, pickupSilverCoins=20, pickupBananas=20, pickupStardust=20,
 }
 
 local states = {
@@ -40,7 +41,8 @@ local states = {
     pickupGodHalo=false, pickupGodChestplate=false, pickupGodLeggings=false,
     pickupGodPickaxe=false, pickupGodAxe=false, pickupGodRock=false,
     pickupGodRod=false, pickupGodBag=false, pickupGodSailboat=false, pickupGodHut=false,
-    antiTab=false, antiLag=false,
+    antiTab=false, antiLag=false, pickupGem=false, pickupWood=false, pickupSilverCoins=false
+    pickupGoldCoins=false, pickupRawMorsel=false, pickupLeaves=false, pickupBananas=false,
 }
 
 if playerGui:FindFirstChild("BoogaHub") then playerGui.BoogaHub:Destroy() end
@@ -660,6 +662,9 @@ makePickupRow(pagePickup,"Cooked Fish",         "pickupCookedFish",        "pick
 makePickupRow(pagePickup,"Gold Bars",           "pickupGold",              "pickupGold")
 makePickupRow(pagePickup,"Iron Bars",           "pickupIron",              "pickupIron")
 
+makeSection(pagePickup,"Currency")
+makePickupRow(pagePickup,"Gems",       "pickupGem",              "pickupGem")
+
 makeSection(pagePickup,"Essence")
 makePickupRow(pagePickup,"Essence",             "pickupEssence",           "pickupEssence")
 makePickupRow(pagePickup,"Void Essence",        "pickupVoidEssence",       "pickupVoidEssence")
@@ -764,6 +769,14 @@ local matchers={
     {k="pickupGodBag",            f=function(n) return n:find("god bag") end},
     {k="pickupGodSailboat",       f=function(n) return n:find("god sailboat") end},
     {k="pickupGodHut",            f=function(n) return n:find("god hut") end},
+    {k="pickupRawMorsel",            f=function(n) return n:find("raw morsel") end},
+    {k="pickupStardust",            f=function(n) return n:find("Stardust") end},
+    {k="pickupBananas",            f=function(n) return n:find("banana") end},
+    {k="pickupWood",            f=function(n) return n:find("wood") end},
+    {k="pickupLeaves",            f=function(n) return n:find("leaves") end},
+    {k="pickupGoldCoins",            f=function(n) return n:find("Gold Coin") end},
+    {k="pickupSilverCoins",            f=function(n) return n:find("Silver Coin") end},
+    {k="pickupGem",            f=function(n) return n:find("Gem") end},
 }
 
 RunService.Heartbeat:Connect(function()
