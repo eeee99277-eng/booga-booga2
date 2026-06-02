@@ -8,7 +8,7 @@ local Lighting            = game:GetService("Lighting")
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
--- ── CONSTANTS ──────────────────────────────────────────────
+-- ── CONSTANTS & COLORS ─────────────────────────────────────
 local GUI_KEY       = Enum.KeyCode.M
 local CLICK_CPS     = 22
 local ATTACK_RANGE  = 18
@@ -16,6 +16,26 @@ local OVEN_RADIUS   = 25
 local FISH_PER_OVEN = 9
 local PLANT_RADIUS  = 30   -- studs to scan for plant boxes
 local PLANT_INPUT   = 216  -- StructureInput action id
+
+local C = {
+    win     = Color3.fromRGB(15, 15, 20),
+    panel   = Color3.fromRGB(20, 20, 28),
+    row     = Color3.fromRGB(26, 26, 36),
+    input   = Color3.fromRGB(12, 12, 18),
+    tabBar  = Color3.fromRGB(11, 11, 16),
+    tabSel  = Color3.fromRGB(99, 102, 241),
+    tabTxt  = Color3.fromRGB(120, 120, 160),
+    accent  = Color3.fromRGB(99, 102, 241),
+    green   = Color3.fromRGB(52, 211, 153),
+    red     = Color3.fromRGB(248, 113, 113),
+    amber   = Color3.fromRGB(251, 191, 36),
+    border  = Color3.fromRGB(40, 40, 60),
+    white   = Color3.fromRGB(240, 240, 255),
+    muted   = Color3.fromRGB(100, 100, 140),
+    pill_on = Color3.fromRGB(99, 102, 241),
+    pill_of = Color3.fromRGB(35, 35, 50),
+    knob    = Color3.fromRGB(200, 200, 230),
+}
 
 local pickupRadii = {
     pickupKeys=35, pickupRaw=20, pickupRawFish=35, pickupCookedFish=35,
@@ -28,12 +48,12 @@ local pickupRadii = {
     pickupGodPickaxe=35, pickupGodAxe=35, pickupGodRock=35,
     pickupGodRod=35, pickupGodBag=35, pickupGodSailboat=35, pickupGodHut=35,
     pickupGem=35, pickupRawMorsel=35, pickupWood=20, pickupLeaves=20,
-    pickupGoldCoins=35, pickupSilverCoins=35, pickupBananas=20,
+    pickupGoldCoins=35, pickupSilverCoins=35, pickupBananas=20, pickupBloodfruit=20,
     pickupStardust=35, pickupCookedMeat=20,
 }
 
 local states = {
-    autoAttack=false, autoCookFish=false, autoPlant=false, autoBreak=false,
+    autoAttack=false, autoCookFish=false, autoPlant=false,
     spyActive=false,
     pickupKeys=false, pickupRaw=false, pickupRawFish=false,
     pickupCookedFish=false, pickupGold=false, pickupIron=false,
@@ -48,7 +68,7 @@ local states = {
     pickupGodRod=false, pickupGodBag=false, pickupGodSailboat=false, pickupGodHut=false,
     antiTab=false, antiLag=false,
     pickupGem=false, pickupWood=false, pickupSilverCoins=false, pickupGoldCoins=false,
-    pickupRawMorsel=false, pickupLeaves=false, pickupBananas=false,
+    pickupRawMorsel=false, pickupLeaves=false, pickupBananas=false, pickupBloodfruit=false,
     pickupStardust=false, pickupCookedMeat=false,
 }
 
@@ -59,6 +79,7 @@ local slotKeys = {Enum.KeyCode.One,Enum.KeyCode.Two,Enum.KeyCode.Three,
 local RS           = game:GetService("ReplicatedStorage")
 local PickupItem   = RS:WaitForChild("Events"):WaitForChild("PickupItem")
 local StructInput  = RS:WaitForChild("Events"):WaitForChild("StructureInput")
+local DamageResource = RS:WaitForChild("Events"):WaitForChild("DamageResource")
 local itemsFolder  = workspace:WaitForChild("Items")
 local crittersFdr  = workspace:WaitForChild("Critters")
 local buildsFolder = workspace:WaitForChild("Resources"):WaitForChild("Builds")
@@ -301,9 +322,7 @@ end
 
 -- ── AUTO PLANT & HARVEST HELPERS ───────────────────────────
 local plantThread, isPlanting = nil, false
-local breakThread, isBreaking = nil, false
 local plantRadius = PLANT_RADIUS
-local DamageResource = RS:WaitForChild("Events"):WaitForChild("DamageResource")
 local selectedCrop = "Banana"
 
 local function getNearbyPlantBoxes()
@@ -346,8 +365,9 @@ local function equipCrop()
     end
     
     if tool then
+        -- Strictly uses EquipTool, NO mouse simulation to prevent random clicking
         player.Character.Humanoid:EquipTool(tool)
-        task.wait(0.15)
+        task.wait(0.2)
         return true
     end
     return false
@@ -361,12 +381,28 @@ local function runAutoPlant()
             task.wait(0.3) continue
         end
         
-        equipCrop()
-        
         local boxes = getNearbyPlantBoxes()
-        if #boxes == 0 then task.wait(0.3) continue end
+        if #boxes > 0 then
+            -- 1. Harvest (Break) existing plants
+            for _, b in ipairs(boxes) do
+                if not states.autoPlant then break end
+                pcall(function()
+                    DamageResource:FireServer()
+                end)
+                task.wait(0.05)
+            end
+            task.wait(0.5) -- Wait for items to drop and be picked up
+        end
+        
+        -- 2. Replant (Strictly NO mouse clicks, uses Remotes only)
+        local equipped = equipCrop()
+        if not equipped then
+            task.wait(0.5)
+            continue
+        end
 
-        for _, b in ipairs(boxes) do
+        local newBoxes = getNearbyPlantBoxes()
+        for _, b in ipairs(newBoxes) do
             if not states.autoPlant then break end
             
             if capturedRemote and capturedArgs then
@@ -393,9 +429,9 @@ local function runAutoPlant()
                     StructInput:InvokeServer(b.obj, 54)
                 end)
             end
-            task.wait(0.05)
+            task.wait(0.15) -- Slightly increased delay to prevent spamming
         end
-        task.wait(0.1)
+        task.wait(0.5)
     end
     isPlanting = false
 end
@@ -408,37 +444,6 @@ local function stopAutoPlant()
     states.autoPlant = false
     if plantThread then task.cancel(plantThread) end
     plantThread = nil isPlanting = false
-end
-
-local function runAutoBreak()
-    isBreaking = true
-    while states.autoBreak do
-        local ch = player.Character
-        if not ch or not ch:FindFirstChild("HumanoidRootPart") then
-            task.wait(0.3) continue
-        end
-        local boxes = getNearbyPlantBoxes()
-        if #boxes == 0 then task.wait(0.3) continue end
-
-        for _, b in ipairs(boxes) do
-            if not states.autoBreak then break end
-            pcall(function()
-                DamageResource:FireServer()
-            end)
-            task.wait(0.01)
-        end
-    end
-    isBreaking = false
-end
-
-local function startAutoBreak()
-    if isBreaking then return end
-    breakThread = task.spawn(runAutoBreak)
-end
-local function stopAutoBreak()
-    states.autoBreak = false
-    if breakThread then task.cancel(breakThread) end
-    breakThread = nil isBreaking = false
 end
 
 -- ── AUTO ATTACK ────────────────────────────────────────────
@@ -480,26 +485,6 @@ end
 -- ═══════════════════════════════════════════════════════════
 --  GUI
 -- ═══════════════════════════════════════════════════════════
-local C = {
-    win     = Color3.fromRGB(15, 15, 20),
-    panel   = Color3.fromRGB(20, 20, 28),
-    row     = Color3.fromRGB(26, 26, 36),
-    input   = Color3.fromRGB(12, 12, 18),
-    tabBar  = Color3.fromRGB(11, 11, 16),
-    tabSel  = Color3.fromRGB(99, 102, 241),
-    tabTxt  = Color3.fromRGB(120, 120, 160),
-    accent  = Color3.fromRGB(99, 102, 241),
-    green   = Color3.fromRGB(52, 211, 153),
-    red     = Color3.fromRGB(248, 113, 113),
-    amber   = Color3.fromRGB(251, 191, 36),
-    border  = Color3.fromRGB(40, 40, 60),
-    white   = Color3.fromRGB(240, 240, 255),
-    muted   = Color3.fromRGB(100, 100, 140),
-    pill_on = Color3.fromRGB(99, 102, 241),
-    pill_of = Color3.fromRGB(35, 35, 50),
-    knob    = Color3.fromRGB(200, 200, 230),
-}
-
 local sg = Instance.new("ScreenGui")
 sg.Name="BoogaHub" sg.ResetOnSpawn=false
 sg.ZIndexBehavior=Enum.ZIndexBehavior.Sibling sg.Parent=playerGui
@@ -952,7 +937,7 @@ UserInputService.InputBegan:Connect(function(inp,proc)
     end
 end)
 
-makeSection(pageFarm,"Auto Plant & Harvest")
+makeSection(pageFarm,"Auto Plant & Replant")
 makeCropSelector(pageFarm, "Crop Selection", "Banana", function(crop)
     selectedCrop = crop
 end)
@@ -961,14 +946,10 @@ makeInfo(pageFarm, "🕵️  Click 'ARM SPY', then manually plant 1 crop in-game
 
 makeSpyButton(pageFarm, "Remote Plant Spy")
 
-makeToggle(pageFarm, "Auto Plant", "autoPlant", function(on)
+makeToggle(pageFarm, "Auto Plant & Replant", "autoPlant", function(on)
     if on then startAutoPlant() else stopAutoPlant() end
 end)
 makeInput(pageFarm, "Plant Box Radius (studs)", PLANT_RADIUS, function(v) plantRadius = v end)
-
-makeToggle(pageFarm, "Auto Break", "autoBreak", function(on)
-    if on then startAutoBreak() else stopAutoBreak() end
-end)
 
 -- ═══════════════════════════════════════════════════════════
 --  PICKUPS TAB
@@ -979,6 +960,7 @@ makePickupRow(pagePickup,"Iron Bars",           "pickupIron",              "pick
 makePickupRow(pagePickup,"Wood",                "pickupWood",              "pickupWood")
 makePickupRow(pagePickup,"Leaves",              "pickupLeaves",            "pickupLeaves")
 makePickupRow(pagePickup,"Bananas",             "pickupBananas",           "pickupBananas")
+makePickupRow(pagePickup,"Bloodfruit",          "pickupBloodfruit",        "pickupBloodfruit")
 
 makeSection(pagePickup,"Meat & Food")
 makePickupRow(pagePickup,"Cooked Fish",         "pickupCookedFish",        "pickupCookedFish")
@@ -1101,6 +1083,7 @@ local matchers={
     {k="pickupRawMorsel",         f=function(n) return n:find("raw morsel") end},
     {k="pickupStardust",          f=function(n) return n:find("stardust") end},
     {k="pickupBananas",           f=function(n) return n:find("banana") end},
+    {k="pickupBloodfruit",        f=function(n) return n:find("bloodfruit") or n:find("blood fruit") end},
     {k="pickupWood",              f=function(n) return n:find("wood") end},
     {k="pickupLeaves",            f=function(n) return n:find("leaves") end},
     {k="pickupGoldCoins",         f=function(n) return n:find("gold coin") end},
