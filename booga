@@ -155,6 +155,7 @@ else
 end
 
 -- ── INPUT HELPERS ─────────────────────────────────────────
+local function pressKey(kc) 
     VirtualInputManager:SendKeyEvent(true,  kc, false, game) task.wait(0.04)
     VirtualInputManager:SendKeyEvent(false, kc, false, game)
 end
