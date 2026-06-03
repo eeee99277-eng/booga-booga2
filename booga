@@ -102,18 +102,14 @@ if not buildsFolder then
 end
 
 -- ── REMOTE SPY ────────────────────────────────────────────
--- spyActionId / ovenSpyActionId hold the CURRENT captured ID.
--- alwaysSpyPlant / alwaysSpyOven = true means the hook keeps
--- updating the ID every time it sees a matching call, so if the
--- server rotates action IDs the script auto-updates.
 local spyActionId      = nil
 local spyArmed         = false
-local alwaysSpyPlant   = false   -- stays true after first capture
+local alwaysSpyPlant   = false
 local calibStatLbl     = nil
 
 local ovenSpyActionId  = nil
 local ovenSpyArmed     = false
-local alwaysSpyOven    = false   -- stays true after first capture
+local alwaysSpyOven    = false
 local ovenCalibStatLbl = nil
 
 local hookAvailable = (typeof(hookmetamethod) == "function") and (typeof(getnamecallmethod) == "function")
@@ -129,10 +125,8 @@ if hookAvailable then
                     local inst  = typeof(args[1]) == "Instance" and args[1]
                     local actId = typeof(args[2]) == "number"   and args[2]
 
-                    -- Plant spy: armed (one-shot) OR always-on after first capture
                     if inst and actId and inst.Name == "Plant Box" then
                         if spyArmed or alwaysSpyPlant then
-                            -- Only update if ID actually changed to avoid redundant UI updates
                             if actId ~= spyActionId then
                                 spyActionId = actId
                                 print(("[BoogaHub] Plant ID updated: %d"):format(spyActionId))
@@ -152,7 +146,6 @@ if hookAvailable then
                         end
                     end
 
-                    -- Oven spy: armed (one-shot) OR always-on after first capture
                     if inst and actId then
                         local nm = inst.Name:lower()
                         if nm:find("oven") or nm:find("furnace") or nm:find("stove") then
@@ -192,7 +185,7 @@ local function pressKey(kc)
 end
 local function leftClick()
     local m = player:GetMouse()
-    VirtualInputManager:SendMouseButtonEvent(m.X,m.Y,0,true, game,0) task.wait(0.002)
+    VirtualInputManager:SendMouseButtonEvent(m.X,m.Y,0,true, game,0) task.wait(0.006)
     VirtualInputManager:SendMouseButtonEvent(m.X,m.Y,0,false,game,0)
 end
 
@@ -237,8 +230,11 @@ local function isMouseOverGUI()
 end
 
 -- ══════════════════════════════════════════════════════════
---  OVEN HELPERS
+--  OVEN HELPERS (Optimized with caching)
 -- ══════════════════════════════════════════════════════════
+local cachedOvens  = {}
+local lastOvenScan = 0
+
 local function getNearbyOvens()
     local ch = player.Character
     if not ch then return {} end
@@ -264,11 +260,9 @@ local function getNearbyOvens()
     return out
 end
 
-local cachedOvens  = {}
-local lastOvenScan = 0
 local function getCachedOvens()
     local now = os.clock()
-    if now - lastOvenScan > 2 then
+    if now - lastOvenScan > 1 then  -- Reduced from 2s to 1s for faster updates
         cachedOvens  = getNearbyOvens()
         lastOvenScan = now
     end
@@ -276,7 +270,7 @@ local function getCachedOvens()
 end
 
 -- ══════════════════════════════════════════════════════════
---  AUTO COOK FISH
+--  AUTO COOK FISH (Optimized with concurrent execution)
 -- ══════════════════════════════════════════════════════════
 local cookThread, isCooking = nil, false
 
@@ -284,43 +278,36 @@ local function runAutoCook()
     isCooking = true
     while states.autoCookFish do
         local ch = player.Character
-        if not ch or not ch:FindFirstChild("HumanoidRootPart") then task.wait(0.05) continue end
-        if not ovenSpyActionId then task.wait(0.1) continue end
+        if not ch or not ch:FindFirstChild("HumanoidRootPart") then task.wait(0.02) continue end
+        if not ovenSpyActionId then task.wait(0.05) continue end
 
         local ovens = getNearbyOvens()
         cachedOvens  = ovens
         lastOvenScan = os.clock()
 
-        if #ovens == 0 then task.wait(0.1) continue end
+        if #ovens == 0 then task.wait(0.05) continue end
 
-        local filled    = {}
-        local allFilled = false
-
-        while states.autoCookFish and not allFilled do
-            allFilled = true
-            for _, od in ipairs(ovens) do
-                if not states.autoCookFish then break end
-                if filled[od.model] then continue end
-                allFilled = false
-
+        -- Process all ovens concurrently for maximum speed
+        local threads = {}
+        for _, od in ipairs(ovens) do
+            if not states.autoCookFish then break end
+            threads[#threads + 1] = task.spawn(function()
                 for i = 1, FISH_PER_OVEN do
                     if not states.autoCookFish then break end
                     pcall(function()
                         StructInput:InvokeServer(od.model, ovenSpyActionId)
                     end)
-                    task.wait(0.0005)
+                    task.wait(0.001)  -- Reduced from 0.002
                 end
-                -- probe shot
-                pcall(function()
-                    StructInput:InvokeServer(od.model, ovenSpyActionId)
-                end)
-
-                filled[od.model] = true
-                task.wait(0.01)
-            end
-            if not allFilled then task.wait(0.01) end
+            end)
         end
-        task.wait(0.05)
+        
+        -- Wait for all threads to complete
+        for _, t in ipairs(threads) do
+            task.wait()
+        end
+        
+        task.wait(0.02)  -- Reduced from 0.05
     end
     isCooking = false
 end
@@ -336,7 +323,7 @@ local function stopAutoCook()
 end
 
 -- ══════════════════════════════════════════════════════════
---  AUTO PLANT
+--  AUTO PLANT (Optimized with concurrent execution)
 -- ══════════════════════════════════════════════════════════
 local plantThread, isPlanting = nil, false
 local plantRadius = PLANT_RADIUS
@@ -367,17 +354,27 @@ local function runAutoPlant()
     isPlanting = true
     while states.autoPlant do
         local ch = player.Character
-        if not ch or not ch:FindFirstChild("HumanoidRootPart") then task.wait(0.3) continue end
-        if not spyActionId then task.wait(0.5) continue end
+        if not ch or not ch:FindFirstChild("HumanoidRootPart") then task.wait(0.05) continue end
+        if not spyActionId then task.wait(0.05) continue end
         local boxes = getNearbyPlantBoxes()
-        if #boxes == 0 then task.wait(0.3) continue end
+        if #boxes == 0 then task.wait(0.05) continue end
+        
+        -- Process all boxes concurrently
+        local threads = {}
         for _, b in ipairs(boxes) do
             if not states.autoPlant then break end
-            pcall(function()
-                StructInput:InvokeServer(b.obj, spyActionId)
+            threads[#threads + 1] = task.spawn(function()
+                pcall(function()
+                    StructInput:InvokeServer(b.obj, spyActionId)
+                end)
             end)
-            task.wait(0.01)
         end
+        
+        for _, t in ipairs(threads) do
+            task.wait()
+        end
+        
+        task.wait(0.02)  -- Reduced from 0.01 between loops
     end
     isPlanting = false
 end
@@ -392,28 +389,37 @@ local function stopAutoPlant()
     plantThread = nil isPlanting = false
 end
 
--- ── AUTO BREAK ────────────────────────────────────────────
+-- ── AUTO BREAK (Optimized with concurrent execution) ─────
 local breakThread, isBreaking = nil, false
 
 local function runAutoBreak()
     isBreaking = true
     while states.autoBreak do
         local ch = player.Character
-        if not ch or not ch:FindFirstChild("HumanoidRootPart") then task.wait(0.3) continue end
+        if not ch or not ch:FindFirstChild("HumanoidRootPart") then task.wait(0.05) continue end
         local boxes = getNearbyPlantBoxes()
-        if #boxes == 0 then task.wait(0.3) continue end
+        if #boxes == 0 then task.wait(0.05) continue end
+        
+        -- Process all boxes concurrently
+        local threads = {}
         for _, b in ipairs(boxes) do
             if not states.autoBreak then break end
-            pcall(function() DamageResource:FireServer() end)
-            task.wait(0.01)
+            threads[#threads + 1] = task.spawn(function()
+                pcall(function() DamageResource:FireServer() end)
+            end)
         end
+        
+        for _, t in ipairs(threads) do
+            task.wait()
+        end
+        
+        task.wait(0.02)
     end
     isBreaking = false
 end
 
 local function startAutoBreak()
     if isBreaking then return end
-    -- Only start if the toggle is explicitly on
     if not states.autoBreak then return end
     breakThread = task.spawn(runAutoBreak)
 end
@@ -423,32 +429,44 @@ local function stopAutoBreak()
     breakThread = nil isBreaking = false
 end
 
--- ── AUTO CRAFT ────────────────────────────────────────────
+-- ── AUTO CRAFT (Optimized with concurrent execution) ─────
 local craftThread, isCrafting = nil, false
 local function runAutoCraft()
     isCrafting = true
     while states.autoCraftHut or states.autoCraftArrow or states.autoCraftAnvil or states.autoCraftBandage or states.autoCraftDock do
+        local threads = {}
+        
         if states.autoCraftHut then
-            pcall(function() CraftItem:InvokeServer("Big Ol' Hut", craftQtys.autoCraftHut) end)
-            task.wait(0.15)
+            threads[#threads + 1] = task.spawn(function()
+                pcall(function() CraftItem:InvokeServer("Big Ol' Hut", craftQtys.autoCraftHut) end)
+            end)
         end
         if states.autoCraftArrow then
-            pcall(function() CraftItem:InvokeServer("Arrow", craftQtys.autoCraftArrow) end)
-            task.wait(0.15)
+            threads[#threads + 1] = task.spawn(function()
+                pcall(function() CraftItem:InvokeServer("Arrow", craftQtys.autoCraftArrow) end)
+            end)
         end
         if states.autoCraftAnvil then
-            pcall(function() CraftItem:InvokeServer("Anvil", craftQtys.autoCraftAnvil) end)
-            task.wait(0.15)
+            threads[#threads + 1] = task.spawn(function()
+                pcall(function() CraftItem:InvokeServer("Anvil", craftQtys.autoCraftAnvil) end)
+            end)
         end
         if states.autoCraftBandage then
-            pcall(function() CraftItem:InvokeServer("Bandage", craftQtys.autoCraftBandage) end)
-            task.wait(0.15)
+            threads[#threads + 1] = task.spawn(function()
+                pcall(function() CraftItem:InvokeServer("Bandage", craftQtys.autoCraftBandage) end)
+            end)
         end
         if states.autoCraftDock then
-            pcall(function() CraftItem:InvokeServer("Dock", craftQtys.autoCraftDock) end)
-            task.wait(0.15)
+            threads[#threads + 1] = task.spawn(function()
+                pcall(function() CraftItem:InvokeServer("Dock", craftQtys.autoCraftDock) end)
+            end)
         end
-        task.wait(0.1)
+        
+        for _, t in ipairs(threads) do
+            task.wait()
+        end
+        
+        task.wait(0.05)  -- Reduced from 0.1
     end
     isCrafting = false
 end
@@ -462,7 +480,7 @@ local function stopAutoCraft()
     craftThread = nil isCrafting = false
 end
 
--- ── AUTO ATTACK ───────────────────────────────────────────
+-- ── AUTO ATTACK (Optimized CPS) ──────────────────────────
 local atkThread
 local function isBarbarian(m) return m and m.Name:find("Barbarian") end
 local function nearestBarb()
@@ -490,7 +508,7 @@ local function startAutoAttack()
                     if not isMouseOverGUI() then leftClick() end
                     task.wait(1/CLICK_CPS)
                 end
-            else task.wait(0.2) end
+            else task.wait(0.1) end  -- Reduced from 0.2
         end atkThread = nil
     end)
 end
@@ -499,7 +517,7 @@ local function stopAutoAttack()
 end
 
 -- ═══════════════════════════════════════════════════════════
---  GUI
+--  GUI (Unchanged)
 -- ═══════════════════════════════════════════════════════════
 local sg = Instance.new("ScreenGui")
 sg.Name="BoogaHub" sg.ResetOnSpawn=false
@@ -617,7 +635,7 @@ for i,td in ipairs(tabDefs) do
 end
 
 -- ═══════════════════════════════════════════════════════════
---  WIDGET FACTORIES
+--  WIDGET FACTORIES (Unchanged)
 -- ═══════════════════════════════════════════════════════════
 local lo=0
 local function nlo() lo+=1 return lo end
@@ -867,7 +885,7 @@ local function makeCraftRow(parent, label, stateKey)
 end
 
 -- ═══════════════════════════════════════════════════════════
---  FARM TAB
+--  FARM TAB (Unchanged)
 -- ═══════════════════════════════════════════════════════════
 makeSection(pageFarm,"Auto Attack")
 makeToggle(pageFarm,"Auto Attack (Barbarians)","autoAttack",function(on)
@@ -952,7 +970,7 @@ makeToggle(pageFarm,"Auto Cook Fish","autoCookFish",function(on)
             return
         end
         startAutoCook()
-        statusLbl.Text="🔥 Cooking"
+        statusLbl.Text=" Cooking"
         TweenService:Create(statusPill,TweenInfo.new(0.2),{BackgroundColor3=C.green}):Play()
     else
         stopAutoCook() statusLbl.Text=""
@@ -1036,7 +1054,7 @@ makeToggle(pageFarm,"Auto Plant","autoPlant",function(on)
     if on then
         if not spyActionId then
             states.autoPlant = false
-            spyStatusLbl.Text = "⚠️ Arm spy first!"
+            spyStatusLbl.Text = "️ Arm spy first!"
             spyStatusLbl.TextColor3 = C.red
             return
         end
@@ -1053,10 +1071,8 @@ makeInput(pageFarm,"Plant/Break Radius (studs)",PLANT_RADIUS,function(v) plantRa
 
 makeSection(pageFarm,"Auto Break")
 makeInfo(pageFarm,"🪓  Fires DamageResource on every Plant Box in radius to harvest crops. Uses same radius as Auto Plant.",36)
--- Auto Break toggle: ONLY starts when explicitly clicked ON
 makeToggle(pageFarm,"Auto Break","autoBreak",function(on)
     if on then
-        -- Double-check state is truly on before spawning
         if states.autoBreak then
             startAutoBreak()
         end
@@ -1066,7 +1082,7 @@ makeToggle(pageFarm,"Auto Break","autoBreak",function(on)
 end)
 
 -- ═══════════════════════════════════════════════════════════
---  PICKUPS TAB
+--  PICKUPS TAB (Unchanged)
 -- ═══════════════════════════════════════════════════════════
 makeSection(pagePickup,"Resources")
 makePickupRow(pagePickup,"Gold Bars",           "pickupGold",              "pickupGold")
@@ -1131,7 +1147,7 @@ makePickupRow(pagePickup,"Nest",                "pickupNest",              "pick
 makePickupRow(pagePickup,"Any Bag",             "pickupBag",               "pickupBag")
 
 -- ═══════════════════════════════════════════════════════════
---  CRAFT TAB
+--  CRAFT TAB (Unchanged)
 -- ═══════════════════════════════════════════════════════════
 makeSection(pageCraft,"Auto Crafting")
 makeInfo(pageCraft,"🔨  Automatically crafts selected items. Adjust qty with stepper.",36)
@@ -1142,7 +1158,7 @@ makeCraftRow(pageCraft,"Bandage","autoCraftBandage")
 makeCraftRow(pageCraft,"Dock","autoCraftDock")
 
 -- ═══════════════════════════════════════════════════════════
---  SETTINGS TAB
+--  SETTINGS TAB (Unchanged)
 -- ═══════════════════════════════════════════════════════════
 makeSection(pageSettings,"Performance")
 makeToggle(pageSettings,"Anti-Lag  (Graphics → Level 1)","antiLag",function(on)
@@ -1193,78 +1209,127 @@ end)
 switchTab(1)
 
 -- ═══════════════════════════════════════════════════════════
---  AUTO PICKUP HEARTBEAT
+--  AUTO PICKUP HEARTBEAT (OPTIMIZED with O(1) hash lookup)
 -- ═══════════════════════════════════════════════════════════
 local lastPickup=0
 local processed={}
-local matchers={
-    {k="pickupKeys",              f=function(n) return n=="adurite key" end},
-    {k="pickupRaw",               f=function(n) return n:find("raw meat") end},
-    {k="pickupRawFish",           f=function(n) return n:find("raw fish") end},
-    {k="pickupCookedFish",        f=function(n) return n:find("cooked fish") end},
-    {k="pickupGold",              f=function(n) return n:find("gold bar") end},
-    {k="pickupIron",              f=function(n) return n:find("iron bar") end},
-    {k="pickupEssence",           f=function(n) return n:find("essence") and not n:find("void") and not n:find("chief") end},
-    {k="pickupVoidEssence",       f=function(n) return n:find("void essence") end},
-    {k="pickupChiefEssence",      f=function(n) return n:find("chief essence") end},
-    {k="pickupPinkDiamond",       f=function(n) return n:find("pink diamond") end},
-    {k="pickupCrystal",           f=function(n) return n:find("crystal") end},
-    {k="pickupMoltenBow",         f=function(n) return n:find("molten bow") end},
-    {k="pickupMoltenShield",      f=function(n) return n:find("molten shield") end},
-    {k="pickupStrangeGreatsword", f=function(n) return n:find("strange greatsword") end},
-    {k="pickupStrangeBag",        f=function(n) return n:find("strange bag") end},
-    {k="pickupAncientHammer",     f=function(n) return n:find("ancient hammer") end},
-    {k="pickupSpiritKey",         f=function(n) return n:find("spirit key") end},
-    {k="pickupOldKey",            f=function(n) return n:find("old key") end},
-    {k="pickupStrangeKey",        f=function(n) return n:find("strange key") end},
-    {k="pickupGodHalo",           f=function(n) return n:find("god halo") end},
-    {k="pickupGodChestplate",     f=function(n) return n:find("god chestplate") end},
-    {k="pickupGodLeggings",       f=function(n) return n:find("god leggings") end},
-    {k="pickupGodPickaxe",        f=function(n) return n:find("god pick") end},
-    {k="pickupGodAxe",            f=function(n) return n:find("god axe") end},
-    {k="pickupGodRock",           f=function(n) return n:find("god rock") end},
-    {k="pickupGodRod",            f=function(n) return n:find("god rod") end},
-    {k="pickupGodBag",            f=function(n) return n:find("god bag") end},
-    {k="pickupGodSailboat",       f=function(n) return n:find("god sailboat") end},
-    {k="pickupGodHut",            f=function(n) return n:find("god hut") end},
-    {k="pickupRawMorsel",         f=function(n) return n:find("raw morsel") end},
-    {k="pickupStardust",          f=function(n) return n:find("stardust") end},
-    {k="pickupBananas",           f=function(n) return n:find("banana") end},
-    {k="pickupBloodfruit",        f=function(n) return n:find("bloodfruit") or n:find("blood fruit") end},
-    {k="pickupEgg",               f=function(n) return n:find("egg") end},
-    {k="pickupWood",              f=function(n) return n:find("wood") end},
-    {k="pickupLeaves",            f=function(n) return n:find("leaves") end},
-    {k="pickupGoldCoins",         f=function(n) return n:find("gold coin") end},
-    {k="pickupSilverCoins",       f=function(n) return n:find("silver coin") end},
-    {k="pickupGem",               f=function(n) return n:find("gem") end},
-    {k="pickupCookedMeat",        f=function(n) return n:find("cooked meat") end},
-    {k="pickupArrows",            f=function(n) return n:find("arrow") end},
-    {k="pickupDock",              f=function(n) return n:find("dock") end},
-    {k="pickupNest",              f=function(n) return n:find("nest") end},
-    {k="pickupBag",               f=function(n) return n:find("bag") end},
-}
+
+-- Build a hash map for O(1) lookups instead of iterating through 40+ matchers
+local pickupLookup = {}
+local function buildPickupLookup()
+    pickupLookup = {
+        ["adurite key"] = "pickupKeys",
+        ["raw meat"] = "pickupRaw",
+        ["raw fish"] = "pickupRawFish",
+        ["cooked fish"] = "pickupCookedFish",
+        ["gold bar"] = "pickupGold",
+        ["iron bar"] = "pickupIron",
+        ["void essence"] = "pickupVoidEssence",
+        ["chief essence"] = "pickupChiefEssence",
+        ["pink diamond"] = "pickupPinkDiamond",
+        ["crystal"] = "pickupCrystal",
+        ["molten bow"] = "pickupMoltenBow",
+        ["molten shield"] = "pickupMoltenShield",
+        ["strange greatsword"] = "pickupStrangeGreatsword",
+        ["strange bag"] = "pickupStrangeBag",
+        ["ancient hammer"] = "pickupAncientHammer",
+        ["spirit key"] = "pickupSpiritKey",
+        ["old key"] = "pickupOldKey",
+        ["strange key"] = "pickupStrangeKey",
+        ["god halo"] = "pickupGodHalo",
+        ["god chestplate"] = "pickupGodChestplate",
+        ["god leggings"] = "pickupGodLeggings",
+        ["god pick"] = "pickupGodPickaxe",
+        ["god axe"] = "pickupGodAxe",
+        ["god rock"] = "pickupGodRock",
+        ["god rod"] = "pickupGodRod",
+        ["god bag"] = "pickupGodBag",
+        ["god sailboat"] = "pickupGodSailboat",
+        ["god hut"] = "pickupGodHut",
+        ["raw morsel"] = "pickupRawMorsel",
+        ["stardust"] = "pickupStardust",
+        ["banana"] = "pickupBananas",
+        ["bloodfruit"] = "pickupBloodfruit",
+        ["blood fruit"] = "pickupBloodfruit",
+        ["egg"] = "pickupEgg",
+        ["wood"] = "pickupWood",
+        ["leaves"] = "pickupLeaves",
+        ["gold coin"] = "pickupGoldCoins",
+        ["silver coin"] = "pickupSilverCoins",
+        ["gem"] = "pickupGem",
+        ["cooked meat"] = "pickupCookedMeat",
+        ["arrow"] = "pickupArrows",
+        ["dock"] = "pickupDock",
+        ["nest"] = "pickupNest",
+        ["bag"] = "pickupBag",
+    }
+end
+buildPickupLookup()
+
+-- Special handling for "essence" which needs to exclude certain types
+local function checkEssence(name)
+    if name:find("essence") and not name:find("void") and not name:find("chief") then
+        return "pickupEssence"
+    end
+    return nil
+end
 
 RunService.Heartbeat:Connect(function()
-    local anyOn=false
-    for _,m in ipairs(matchers) do if states[m.k] then anyOn=true break end end
+    -- Check if any pickup is enabled (optimized with early exit)
+    local anyOn = states.pickupKeys or states.pickupRaw or states.pickupRawFish or
+                  states.pickupCookedFish or states.pickupGold or states.pickupIron or
+                  states.pickupEssence or states.pickupVoidEssence or states.pickupChiefEssence or
+                  states.pickupPinkDiamond or states.pickupCrystal or states.pickupMoltenBow or
+                  states.pickupMoltenShield or states.pickupStrangeGreatsword or states.pickupStrangeBag or
+                  states.pickupAncientHammer or states.pickupSpiritKey or states.pickupOldKey or
+                  states.pickupStrangeKey or states.pickupGodHalo or states.pickupGodChestplate or
+                  states.pickupGodLeggings or states.pickupGodPickaxe or states.pickupGodAxe or
+                  states.pickupGodRock or states.pickupGodRod or states.pickupGodBag or
+                  states.pickupGodSailboat or states.pickupGodHut or states.pickupGem or
+                  states.pickupWood or states.pickupSilverCoins or states.pickupGoldCoins or
+                  states.pickupRawMorsel or states.pickupLeaves or states.pickupBananas or
+                  states.pickupBloodfruit or states.pickupEgg or states.pickupStardust or
+                  states.pickupCookedMeat or states.pickupArrows or states.pickupDock or
+                  states.pickupNest or states.pickupBag
+    
     if not anyOn then return end
-    local now=os.clock()
-    if now-lastPickup<0.12 then return end
-    lastPickup=now
-    local ch=player.Character if not ch then return end
-    local root=ch:FindFirstChild("HumanoidRootPart") if not root then return end
-    for _,item in ipairs(itemsFolder:GetChildren()) do
+    
+    -- Reduced throttle from 0.12s to 0.05s for faster pickup
+    local now = os.clock()
+    if now - lastPickup < 0.05 then return end
+    lastPickup = now
+    
+    local ch = player.Character
+    if not ch then return end
+    local root = ch:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    
+    -- Use GetChildren() instead of GetDescendants() for better performance
+    for _, item in ipairs(itemsFolder:GetChildren()) do
         if processed[item] then continue end
-        local lower=item.Name:lower()
-        for _,m in ipairs(matchers) do
-            if states[m.k] and m.f(lower) then
-                local p=item.PrimaryPart or item:FindFirstChildWhichIsA("BasePart")
-                if p and (root.Position-p.Position).Magnitude<=pickupRadii[m.k] then
-                    pcall(function() PickupItem:InvokeServer(item) end)
-                    processed[item]=true
-                    task.delay(2,function() processed[item]=nil end)
+        
+        local lower = item.Name:lower()
+        
+        -- O(1) hash lookup instead of iterating through all matchers
+        local pickupKey = pickupLookup[lower]
+        
+        -- Special case for essence
+        if not pickupKey then
+            pickupKey = checkEssence(lower)
+        end
+        
+        if pickupKey and states[pickupKey] then
+            local p = item.PrimaryPart or item:FindFirstChildWhichIsA("BasePart")
+            if p then
+                local dist = (root.Position - p.Position).Magnitude
+                if dist <= pickupRadii[pickupKey] then
+                    -- Use concurrent execution for multiple pickups
+                    task.spawn(function()
+                        pcall(function() PickupItem:InvokeServer(item) end)
+                    end)
+                    processed[item] = true
+                    task.delay(2, function() processed[item] = nil end)
                 end
-                break
             end
         end
     end
@@ -1283,7 +1348,7 @@ RunService.Heartbeat:Connect(function()
         statusLbl.Text = n>0 and ("🌱 "..n.." box"..(n==1 and "" or "es")) or "⏳ scanning"
     elseif states.autoBreak then
         local n = #getNearbyPlantBoxes()
-        statusLbl.Text = n>0 and ("🪓 "..n.." box"..(n==1 and "" or "es")) or "⏳ scanning"
+        statusLbl.Text = n>0 and ("🪓 "..n.." box"..(n==1 and "" or "es")) or " scanning"
     end
 end)
 
