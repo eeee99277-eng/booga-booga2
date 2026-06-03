@@ -15,7 +15,6 @@ local OVEN_RADIUS   = 25
 local FISH_PER_OVEN = 9
 local PLANT_RADIUS  = 30
 
--- Crop action IDs
 local CROP_IDS = { Banana = 54, Bloodfruit = 36 }
 local selectedCrop = "Banana"
 
@@ -40,26 +39,27 @@ local C = {
 }
 
 local pickupRadii = {
-    pickupKeys=35, pickupRaw=20, pickupRawFish=35, pickupCookedFish=35,
-    pickupGold=35, pickupIron=20, pickupEssence=35, pickupVoidEssence=20,
-    pickupChiefEssence=35, pickupPinkDiamond=20, pickupCrystal=35,
-    pickupMoltenBow=35, pickupMoltenShield=35, pickupStrangeGreatsword=20,
+    pickupKeys=35, pickupRaw=35, pickupRawFish=35, pickupCookedFish=35,
+    pickupGold=35, pickupIron=35, pickupEssence=35, pickupVoidEssence=35,
+    pickupChiefEssence=35, pickupPinkDiamond=35, pickupCrystal=35,
+    pickupMoltenBow=35, pickupMoltenShield=35, pickupStrangeGreatsword=35,
     pickupStrangeBag=35, pickupAncientHammer=35,
     pickupSpiritKey=35, pickupOldKey=35, pickupStrangeKey=35,
     pickupGodHalo=35, pickupGodChestplate=35, pickupGodLeggings=35,
     pickupGodPickaxe=35, pickupGodAxe=35, pickupGodRock=35,
     pickupGodRod=35, pickupGodBag=35, pickupGodSailboat=35, pickupGodHut=35,
-    pickupGem=35, pickupRawMorsel=35, pickupWood=20, pickupLeaves=20,
-    pickupGoldCoins=35, pickupSilverCoins=35, pickupBananas=20,
-    pickupBloodfruit=20, pickupEgg=35,
-    pickupStardust=35, pickupCookedMeat=20,
+    pickupGem=35, pickupRawMorsel=35, pickupWood=35, pickupLeaves=35,
+    pickupGoldCoins=35, pickupSilverCoins=35, pickupBananas=35,
+    pickupBloodfruit=35, pickupEgg=35,
+    pickupStardust=35, pickupCookedMeat=35,
+    pickupArrows=35, pickupDock=35, pickupNest=35, pickupBag=35,
 }
 
-local craftQtys = { autoCraftHut=1, autoCraftArrow=1, autoCraftAnvil=1 }
+local craftQtys = { autoCraftHut=1, autoCraftArrow=1, autoCraftAnvil=1, autoCraftBandage=1, autoCraftDock=1 }
 
 local states = {
     autoAttack=false, autoCookFish=false, autoPlant=false, autoBreak=false,
-    autoCraftHut=false, autoCraftArrow=false, autoCraftAnvil=false,
+    autoCraftHut=false, autoCraftArrow=false, autoCraftAnvil=false, autoCraftBandage=false, autoCraftDock=false,
     pickupKeys=false, pickupRaw=false, pickupRawFish=false,
     pickupCookedFish=false, pickupGold=false, pickupIron=false,
     pickupEssence=false, pickupVoidEssence=false, pickupChiefEssence=false,
@@ -71,11 +71,12 @@ local states = {
     pickupGodHalo=false, pickupGodChestplate=false, pickupGodLeggings=false,
     pickupGodPickaxe=false, pickupGodAxe=false, pickupGodRock=false,
     pickupGodRod=false, pickupGodBag=false, pickupGodSailboat=false, pickupGodHut=false,
-    antiTab=false, antiLag=false,
+    antiTab=false, antiLag=false, noShadows=false,
     pickupGem=false, pickupWood=false, pickupSilverCoins=false, pickupGoldCoins=false,
     pickupRawMorsel=false, pickupLeaves=false, pickupBananas=false,
     pickupBloodfruit=false, pickupEgg=false,
     pickupStardust=false, pickupCookedMeat=false,
+    pickupArrows=false, pickupDock=false, pickupNest=false, pickupBag=false,
 }
 
 if playerGui:FindFirstChild("BoogaHub") then playerGui.BoogaHub:Destroy() end
@@ -101,12 +102,18 @@ if not buildsFolder then
 end
 
 -- ── REMOTE SPY ────────────────────────────────────────────
-local spyActionId    = nil
-local spyArmed       = false
-local calibStatLbl   = nil
+-- spyActionId / ovenSpyActionId hold the CURRENT captured ID.
+-- alwaysSpyPlant / alwaysSpyOven = true means the hook keeps
+-- updating the ID every time it sees a matching call, so if the
+-- server rotates action IDs the script auto-updates.
+local spyActionId      = nil
+local spyArmed         = false
+local alwaysSpyPlant   = false   -- stays true after first capture
+local calibStatLbl     = nil
 
 local ovenSpyActionId  = nil
 local ovenSpyArmed     = false
+local alwaysSpyOven    = false   -- stays true after first capture
 local ovenCalibStatLbl = nil
 
 local hookAvailable = (typeof(hookmetamethod) == "function") and (typeof(getnamecallmethod) == "function")
@@ -122,25 +129,50 @@ if hookAvailable then
                     local inst  = typeof(args[1]) == "Instance" and args[1]
                     local actId = typeof(args[2]) == "number"   and args[2]
 
-                    if spyArmed and inst and actId and inst.Name == "Plant Box" then
-                        spyActionId = actId
-                        spyArmed    = false
-                        print(("[BoogaHub] Plant ID: %d"):format(spyActionId))
-                        if calibStatLbl then
-                            calibStatLbl.Text       = "✅ ID: " .. spyActionId
-                            calibStatLbl.TextColor3 = Color3.fromRGB(52,211,153)
+                    -- Plant spy: armed (one-shot) OR always-on after first capture
+                    if inst and actId and inst.Name == "Plant Box" then
+                        if spyArmed or alwaysSpyPlant then
+                            -- Only update if ID actually changed to avoid redundant UI updates
+                            if actId ~= spyActionId then
+                                spyActionId = actId
+                                print(("[BoogaHub] Plant ID updated: %d"):format(spyActionId))
+                                if calibStatLbl then
+                                    calibStatLbl.Text       = "🔄 ID: " .. spyActionId
+                                    calibStatLbl.TextColor3 = Color3.fromRGB(52,211,153)
+                                end
+                            end
+                            if spyArmed then
+                                spyArmed      = false
+                                alwaysSpyPlant = true
+                                if calibStatLbl then
+                                    calibStatLbl.Text       = "✅ ID: " .. spyActionId
+                                    calibStatLbl.TextColor3 = Color3.fromRGB(52,211,153)
+                                end
+                            end
                         end
                     end
 
-                    if ovenSpyArmed and inst and actId then
+                    -- Oven spy: armed (one-shot) OR always-on after first capture
+                    if inst and actId then
                         local nm = inst.Name:lower()
                         if nm:find("oven") or nm:find("furnace") or nm:find("stove") then
-                            ovenSpyActionId = actId
-                            ovenSpyArmed    = false
-                            print(("[BoogaHub] Oven fish ID: %d"):format(ovenSpyActionId))
-                            if ovenCalibStatLbl then
-                                ovenCalibStatLbl.Text       = "✅ ID: " .. ovenSpyActionId
-                                ovenCalibStatLbl.TextColor3 = Color3.fromRGB(52,211,153)
+                            if ovenSpyArmed or alwaysSpyOven then
+                                if actId ~= ovenSpyActionId then
+                                    ovenSpyActionId = actId
+                                    print(("[BoogaHub] Oven ID updated: %d"):format(ovenSpyActionId))
+                                    if ovenCalibStatLbl then
+                                        ovenCalibStatLbl.Text       = "🔄 ID: " .. ovenSpyActionId
+                                        ovenCalibStatLbl.TextColor3 = Color3.fromRGB(52,211,153)
+                                    end
+                                end
+                                if ovenSpyArmed then
+                                    ovenSpyArmed  = false
+                                    alwaysSpyOven  = true
+                                    if ovenCalibStatLbl then
+                                        ovenCalibStatLbl.Text       = "✅ ID: " .. ovenSpyActionId
+                                        ovenCalibStatLbl.TextColor3 = Color3.fromRGB(52,211,153)
+                                    end
+                                end
                             end
                         end
                     end
@@ -184,11 +216,12 @@ local savedQuality
 local function enableAntiLag()
     savedQuality = settings().Rendering.QualityLevel
     settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
-    Lighting.GlobalShadows = false Lighting.FogEnd = 9e8
+    Lighting.GlobalShadows = false
+    Lighting.FogEnd = 9e8
 end
 local function disableAntiLag()
     settings().Rendering.QualityLevel = savedQuality or Enum.QualityLevel.Automatic
-    Lighting.GlobalShadows = true
+    Lighting.GlobalShadows = not states.noShadows
 end
 
 -- ── GUI PROTECTION ────────────────────────────────────────
@@ -231,12 +264,12 @@ local function getNearbyOvens()
     return out
 end
 
-local cachedOvens = {}
+local cachedOvens  = {}
 local lastOvenScan = 0
 local function getCachedOvens()
     local now = os.clock()
     if now - lastOvenScan > 2 then
-        cachedOvens = getNearbyOvens()
+        cachedOvens  = getNearbyOvens()
         lastOvenScan = now
     end
     return cachedOvens
@@ -244,11 +277,6 @@ end
 
 -- ══════════════════════════════════════════════════════════
 --  AUTO COOK FISH
---  1. Find all ovens in radius
---  2. For each unfilled oven: fire spy ID × FISH_PER_OVEN
---  3. Fire one extra probe shot — if server accepts it the
---     oven had room; either way mark it filled for this cycle
---  4. Once every oven is marked filled, rescan and repeat
 -- ══════════════════════════════════════════════════════════
 local cookThread, isCooking = nil, false
 
@@ -259,49 +287,39 @@ local function runAutoCook()
         if not ch or not ch:FindFirstChild("HumanoidRootPart") then task.wait(0.1) continue end
         if not ovenSpyActionId then task.wait(0.2) continue end
 
-        -- Fresh oven scan at the start of every full cycle
         local ovens = getNearbyOvens()
-        cachedOvens = ovens
+        cachedOvens  = ovens
         lastOvenScan = os.clock()
 
         if #ovens == 0 then task.wait(0.2) continue end
 
-        local filled = {}
+        local filled    = {}
         local allFilled = false
 
         while states.autoCookFish and not allFilled do
             allFilled = true
-
             for _, od in ipairs(ovens) do
                 if not states.autoCookFish then break end
                 if filled[od.model] then continue end
-
                 allFilled = false
 
-                -- Fire all slots as fast as the server will accept them
                 for i = 1, FISH_PER_OVEN do
                     if not states.autoCookFish then break end
                     pcall(function()
                         StructInput:InvokeServer(od.model, ovenSpyActionId)
                     end)
-                    task.wait(0.002)  -- minimal yield to avoid script timeout
+                    task.wait(0.002)
                 end
-
-                -- One probe shot then immediately move on
+                -- probe shot
                 pcall(function()
                     StructInput:InvokeServer(od.model, ovenSpyActionId)
                 end)
 
                 filled[od.model] = true
-                task.wait(0.01)  -- tiny gap between ovens
-            end
-
-            if not allFilled then
                 task.wait(0.01)
             end
+            if not allFilled then task.wait(0.01) end
         end
-
-        -- Rescan immediately — no pause between cycles
         task.wait(0.1)
     end
     isCooking = false
@@ -395,6 +413,8 @@ end
 
 local function startAutoBreak()
     if isBreaking then return end
+    -- Only start if the toggle is explicitly on
+    if not states.autoBreak then return end
     breakThread = task.spawn(runAutoBreak)
 end
 local function stopAutoBreak()
@@ -407,7 +427,7 @@ end
 local craftThread, isCrafting = nil, false
 local function runAutoCraft()
     isCrafting = true
-    while states.autoCraftHut or states.autoCraftArrow or states.autoCraftAnvil do
+    while states.autoCraftHut or states.autoCraftArrow or states.autoCraftAnvil or states.autoCraftBandage or states.autoCraftDock do
         if states.autoCraftHut then
             pcall(function() CraftItem:InvokeServer("Big Ol' Hut", craftQtys.autoCraftHut) end)
             task.wait(0.15)
@@ -420,6 +440,14 @@ local function runAutoCraft()
             pcall(function() CraftItem:InvokeServer("Anvil", craftQtys.autoCraftAnvil) end)
             task.wait(0.15)
         end
+        if states.autoCraftBandage then
+            pcall(function() CraftItem:InvokeServer("Bandage", craftQtys.autoCraftBandage) end)
+            task.wait(0.15)
+        end
+        if states.autoCraftDock then
+            pcall(function() CraftItem:InvokeServer("Dock", craftQtys.autoCraftDock) end)
+            task.wait(0.15)
+        end
         task.wait(0.1)
     end
     isCrafting = false
@@ -429,7 +457,7 @@ local function startAutoCraft()
     craftThread = task.spawn(runAutoCraft)
 end
 local function stopAutoCraft()
-    if states.autoCraftHut or states.autoCraftArrow or states.autoCraftAnvil then return end
+    if states.autoCraftHut or states.autoCraftArrow or states.autoCraftAnvil or states.autoCraftBandage or states.autoCraftDock then return end
     if craftThread then task.cancel(craftThread) end
     craftThread = nil isCrafting = false
 end
@@ -555,11 +583,11 @@ local function makePage()
     return sf
 end
 
-local pageFarm    = makePage()
-local pagePickup  = makePage()
-local pageCraft   = makePage()
-local pageSettings= makePage()
-local allPages    = {pageFarm, pagePickup, pageCraft, pageSettings}
+local pageFarm     = makePage()
+local pagePickup   = makePage()
+local pageCraft    = makePage()
+local pageSettings = makePage()
+local allPages     = {pageFarm, pagePickup, pageCraft, pageSettings}
 
 local tabDefs = {
     {icon="⚔",  label="FARM"},
@@ -635,6 +663,7 @@ local function makeToggle(parent,label,stateKey,cb)
         TweenService:Create(stroke,TweenInfo.new(0.15),{Color=on and C.accent or C.border}):Play()
         TweenService:Create(lbl,TweenInfo.new(0.15),{TextColor3=on and C.white or C.muted}):Play()
     end
+    setV(states[stateKey])
     local btn=Instance.new("TextButton",row)
     btn.Size=UDim2.new(1,0,1,0) btn.BackgroundTransparency=1 btn.Text=""
     btn.MouseButton1Click:Connect(function()
@@ -759,6 +788,7 @@ local function makePickupRow(parent,label,stateKey,radiusKey)
         TweenService:Create(stroke,TweenInfo.new(0.15),{Color=on and C.accent or C.border}):Play()
         TweenService:Create(lbl,TweenInfo.new(0.15),{TextColor3=on and C.white or C.muted}):Play()
     end
+    setV(states[stateKey])
     local btn=Instance.new("TextButton",row)
     btn.Size=UDim2.new(1,0,1,0) btn.BackgroundTransparency=1 btn.Text="" btn.ZIndex=1
     stepper.ZIndex=3 minusBtn.ZIndex=4 plusBtn.ZIndex=4 valLbl.ZIndex=4
@@ -820,6 +850,7 @@ local function makeCraftRow(parent, label, stateKey)
         TweenService:Create(stroke,TweenInfo.new(0.15),{Color=on and C.accent or C.border}):Play()
         TweenService:Create(lbl,TweenInfo.new(0.15),{TextColor3=on and C.white or C.muted}):Play()
     end
+    setV(states[stateKey])
     local btn=Instance.new("TextButton",row)
     btn.Size=UDim2.new(1,0,1,0) btn.BackgroundTransparency=1 btn.Text="" btn.ZIndex=1
     stepper.ZIndex=3 minusBtn.ZIndex=4 plusBtn.ZIndex=4 valLbl.ZIndex=4
@@ -827,7 +858,7 @@ local function makeCraftRow(parent, label, stateKey)
     btn.MouseButton1Click:Connect(function()
         states[stateKey]=not states[stateKey]
         setV(states[stateKey])
-        if states.autoCraftHut or states.autoCraftArrow or states.autoCraftAnvil then
+        if states.autoCraftHut or states.autoCraftArrow or states.autoCraftAnvil or states.autoCraftBandage or states.autoCraftDock then
             startAutoCraft()
         else
             stopAutoCraft()
@@ -846,7 +877,7 @@ makeInput(pageFarm,"Attack CPS",CLICK_CPS,function(v) CLICK_CPS=v end)
 makeInput(pageFarm,"Attack Range (studs)",ATTACK_RANGE,function(v) ATTACK_RANGE=v end)
 
 makeSection(pageFarm,"Auto Cook Fish")
-makeInfo(pageFarm,"🐟  ARM SPY then manually add fish to one oven to capture ID. Or type the ID manually if spy unavailable.",44)
+makeInfo(pageFarm,"🐟  ARM SPY then manually add fish to one oven. After first capture the ID is tracked automatically forever.",44)
 
 local ovenSpyRow = Instance.new("Frame", pageFarm)
 ovenSpyRow.Size=UDim2.new(1,0,0,40) ovenSpyRow.BackgroundColor3=C.row
@@ -874,7 +905,7 @@ ovenArmBtn.MouseButton1Click:Connect(function()
         ovenSpyLbl.TextColor3=C.amber
         return
     end
-    ovenSpyArmed=true ovenSpyActionId=nil
+    ovenSpyArmed=true ovenSpyActionId=nil alwaysSpyOven=false
     ovenArmBtn.Text="ARMED 🔴"
     ovenArmBtn.BackgroundColor3=C.red
     ovenArmStroke.Color=C.red
@@ -895,16 +926,19 @@ end)
 task.spawn(function()
     while true do
         if ovenSpyActionId and not ovenSpyArmed then
-            ovenArmBtn.Text="✅ CAPTURED"
+            ovenArmBtn.Text="🔄 TRACKING"
             ovenArmBtn.BackgroundColor3=Color3.fromRGB(30,80,30)
             ovenArmStroke.Color=C.green
+            ovenSpyLbl.Text="✅ ID: "..ovenSpyActionId.." (auto-tracking)"
+            ovenSpyLbl.TextColor3=C.green
         end
-        task.wait(0.2)
+        task.wait(0.5)
     end
 end)
 
 makeInput(pageFarm,"Oven Fish ID (manual)",0,function(v)
     ovenSpyActionId = v
+    alwaysSpyOven   = true
     ovenSpyLbl.Text = "✅ Manual ID: " .. v
     ovenSpyLbl.TextColor3 = C.green
 end)
@@ -928,7 +962,7 @@ end)
 makeInput(pageFarm,"Oven Detect Radius",OVEN_RADIUS,function(v) OVEN_RADIUS=v end)
 
 makeSection(pageFarm,"Auto Plant")
-makeInfo(pageFarm,"🕵️  Press ARM SPY, then manually plant one crop. The ID is intercepted and used on all boxes in radius forever.",44)
+makeInfo(pageFarm,"🕵️  ARM SPY then manually plant one crop. After first capture the ID is tracked automatically forever.",44)
 
 local spyRow = Instance.new("Frame", pageFarm)
 spyRow.Size = UDim2.new(1,0,0,40) spyRow.BackgroundColor3=C.row
@@ -959,6 +993,7 @@ armBtn.MouseButton1Click:Connect(function()
     end
     spyArmed = true
     spyActionId = nil
+    alwaysSpyPlant = false
     armBtn.Text = "ARMED 🔴"
     armBtn.BackgroundColor3 = C.red
     armStroke.Color = C.red
@@ -979,16 +1014,19 @@ end)
 task.spawn(function()
     while true do
         if spyActionId and not spyArmed then
-            armBtn.Text = "✅ CAPTURED"
+            armBtn.Text = "🔄 TRACKING"
             armBtn.BackgroundColor3 = Color3.fromRGB(30,80,30)
             armStroke.Color = C.green
+            spyStatusLbl.Text = "✅ ID: "..spyActionId.." (auto-tracking)"
+            spyStatusLbl.TextColor3 = C.green
         end
-        task.wait(0.2)
+        task.wait(0.5)
     end
 end)
 
 makeInput(pageFarm,"Plant ID (manual)",0,function(v)
-    spyActionId = v
+    spyActionId    = v
+    alwaysSpyPlant = true
     spyStatusLbl.Text = "✅ Manual ID: " .. v
     spyStatusLbl.TextColor3 = C.green
 end)
@@ -1015,8 +1053,16 @@ makeInput(pageFarm,"Plant/Break Radius (studs)",PLANT_RADIUS,function(v) plantRa
 
 makeSection(pageFarm,"Auto Break")
 makeInfo(pageFarm,"🪓  Fires DamageResource on every Plant Box in radius to harvest crops. Uses same radius as Auto Plant.",36)
+-- Auto Break toggle: ONLY starts when explicitly clicked ON
 makeToggle(pageFarm,"Auto Break","autoBreak",function(on)
-    if on then startAutoBreak() else stopAutoBreak() end
+    if on then
+        -- Double-check state is truly on before spawning
+        if states.autoBreak then
+            startAutoBreak()
+        end
+    else
+        stopAutoBreak()
+    end
 end)
 
 -- ═══════════════════════════════════════════════════════════
@@ -1078,6 +1124,12 @@ makePickupRow(pagePickup,"God Bag",             "pickupGodBag",            "pick
 makePickupRow(pagePickup,"God Sailboat",        "pickupGodSailboat",       "pickupGodSailboat")
 makePickupRow(pagePickup,"God Hut",             "pickupGodHut",            "pickupGodHut")
 
+makeSection(pagePickup,"Structures & Misc")
+makePickupRow(pagePickup,"Arrows",              "pickupArrows",            "pickupArrows")
+makePickupRow(pagePickup,"Dock",                "pickupDock",              "pickupDock")
+makePickupRow(pagePickup,"Nest",                "pickupNest",              "pickupNest")
+makePickupRow(pagePickup,"Any Bag",             "pickupBag",               "pickupBag")
+
 -- ═══════════════════════════════════════════════════════════
 --  CRAFT TAB
 -- ═══════════════════════════════════════════════════════════
@@ -1086,6 +1138,8 @@ makeInfo(pageCraft,"🔨  Automatically crafts selected items. Adjust qty with s
 makeCraftRow(pageCraft,"Big Ol' Hut","autoCraftHut")
 makeCraftRow(pageCraft,"Arrow","autoCraftArrow")
 makeCraftRow(pageCraft,"Anvil","autoCraftAnvil")
+makeCraftRow(pageCraft,"Bandage","autoCraftBandage")
+makeCraftRow(pageCraft,"Dock","autoCraftDock")
 
 -- ═══════════════════════════════════════════════════════════
 --  SETTINGS TAB
@@ -1093,6 +1147,22 @@ makeCraftRow(pageCraft,"Anvil","autoCraftAnvil")
 makeSection(pageSettings,"Performance")
 makeToggle(pageSettings,"Anti-Lag  (Graphics → Level 1)","antiLag",function(on)
     if on then enableAntiLag() else disableAntiLag() end
+end)
+makeToggle(pageSettings,"No Shadows","noShadows",function(on)
+    Lighting.GlobalShadows = not on
+end)
+
+makeSection(pageSettings,"Player")
+local walkspeed = 16
+makeInput(pageSettings,"Walkspeed (Max 21)",walkspeed,function(v)
+    walkspeed = math.min(21, math.max(1, math.floor(v)))
+    if player.Character and player.Character:FindFirstChild("Humanoid") then
+        player.Character.Humanoid.WalkSpeed = walkspeed
+    end
+end)
+
+player.CharacterAdded:Connect(function(char)
+    char:WaitForChild("Humanoid").WalkSpeed = walkspeed
 end)
 
 makeSection(pageSettings,"Focus")
@@ -1102,7 +1172,7 @@ end)
 
 makeSection(pageSettings,"Keybinds")
 local kbInfo=Instance.new("TextLabel",pageSettings)
-kbInfo.Size=UDim2.new(1,0,0,90) kbInfo.BackgroundColor3=C.row
+kbInfo.Size=UDim2.new(1,0,0,60) kbInfo.BackgroundColor3=C.row
 kbInfo.BorderSizePixel=0 kbInfo.LayoutOrder=nlo()
 Instance.new("UICorner",kbInfo).CornerRadius=UDim.new(0,8)
 Instance.new("UIStroke",kbInfo).Color=C.border
@@ -1168,6 +1238,10 @@ local matchers={
     {k="pickupSilverCoins",       f=function(n) return n:find("silver coin") end},
     {k="pickupGem",               f=function(n) return n:find("gem") end},
     {k="pickupCookedMeat",        f=function(n) return n:find("cooked meat") end},
+    {k="pickupArrows",            f=function(n) return n:find("arrow") end},
+    {k="pickupDock",              f=function(n) return n:find("dock") end},
+    {k="pickupNest",              f=function(n) return n:find("nest") end},
+    {k="pickupBag",               f=function(n) return n:find("bag") end},
 }
 
 RunService.Heartbeat:Connect(function()
@@ -1196,7 +1270,6 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- Status ticker
 local lastStatusTick = 0
 RunService.Heartbeat:Connect(function()
     local now = os.clock()
