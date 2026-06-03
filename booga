@@ -1227,7 +1227,7 @@ local function buildPickupLookup()
         ["void essence"] = "pickupVoidEssence",
         ["chief essence"] = "pickupChiefEssence",
         ["pink diamond"] = "pickupPinkDiamond",
-        ["crystal"] = "pickupCrystal",
+        ["crystal chunk"] = "pickupCrystal",
         ["molten bow"] = "pickupMoltenBow",
         ["molten shield"] = "pickupMoltenShield",
         ["strange greatsword"] = "pickupStrangeGreatsword",
