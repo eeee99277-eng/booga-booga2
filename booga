@@ -284,14 +284,14 @@ local function runAutoCook()
     isCooking = true
     while states.autoCookFish do
         local ch = player.Character
-        if not ch or not ch:FindFirstChild("HumanoidRootPart") then task.wait(0.1) continue end
-        if not ovenSpyActionId then task.wait(0.2) continue end
+        if not ch or not ch:FindFirstChild("HumanoidRootPart") then task.wait(0.05) continue end
+        if not ovenSpyActionId then task.wait(0.1) continue end
 
         local ovens = getNearbyOvens()
         cachedOvens  = ovens
         lastOvenScan = os.clock()
 
-        if #ovens == 0 then task.wait(0.2) continue end
+        if #ovens == 0 then task.wait(0.1) continue end
 
         local filled    = {}
         local allFilled = false
@@ -320,7 +320,7 @@ local function runAutoCook()
             end
             if not allFilled then task.wait(0.01) end
         end
-        task.wait(0.1)
+        task.wait(0.05)
     end
     isCooking = false
 end
