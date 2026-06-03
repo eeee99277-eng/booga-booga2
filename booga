@@ -192,7 +192,7 @@ local function pressKey(kc)
 end
 local function leftClick()
     local m = player:GetMouse()
-    VirtualInputManager:SendMouseButtonEvent(m.X,m.Y,0,true, game,0) task.wait(0.006)
+    VirtualInputManager:SendMouseButtonEvent(m.X,m.Y,0,true, game,0) task.wait(0.002)
     VirtualInputManager:SendMouseButtonEvent(m.X,m.Y,0,false,game,0)
 end
 
@@ -308,7 +308,7 @@ local function runAutoCook()
                     pcall(function()
                         StructInput:InvokeServer(od.model, ovenSpyActionId)
                     end)
-                    task.wait(0.002)
+                    task.wait(0.0005)
                 end
                 -- probe shot
                 pcall(function()
