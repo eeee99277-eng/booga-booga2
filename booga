@@ -297,7 +297,7 @@ local function runAutoCook()
                     pcall(function()
                         StructInput:InvokeServer(od.model, ovenSpyActionId)
                     end)
-                    task.wait(0.001)  -- Reduced from 0.002
+                    task.wait(0.005)  -- Reduced from 0.002
                 end
             end)
         end
@@ -1144,7 +1144,7 @@ makeSection(pagePickup,"Structures & Misc")
 makePickupRow(pagePickup,"Arrows",              "pickupArrows",            "pickupArrows")
 makePickupRow(pagePickup,"Dock",                "pickupDock",              "pickupDock")
 makePickupRow(pagePickup,"Nest",                "pickupNest",              "pickupNest")
-makePickupRow(pagePickup,"Any Bag",             "pickupBag",               "pickupBag")
+makePickupRow(pagePickup,"Crystal Bag",             "pickupBag",               "pickupBag")
 
 -- ═══════════════════════════════════════════════════════════
 --  CRAFT TAB (Unchanged)
@@ -1261,7 +1261,7 @@ local function buildPickupLookup()
         ["arrow"] = "pickupArrows",
         ["dock"] = "pickupDock",
         ["nest"] = "pickupNest",
-        ["bag"] = "pickupBag",
+        ["crystal bag"] = "pickupBag",
     }
 end
 buildPickupLookup()
