@@ -297,7 +297,7 @@ local function runAutoCook()
                     pcall(function()
                         StructInput:InvokeServer(od.model, ovenSpyActionId)
                     end)
-                    task.wait(0.005)  -- Reduced from 0.002
+                    task.wait(0.002)  -- Reduced from 0.002
                 end
             end)
         end
@@ -307,7 +307,7 @@ local function runAutoCook()
             task.wait()
         end
         
-        task.wait(0.02)  -- Reduced from 0.05
+        task.wait(0.05)  -- Reduced from 0.05
     end
     isCooking = false
 end
